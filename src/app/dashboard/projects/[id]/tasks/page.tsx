@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation"
 // Removed service imports - using API calls instead
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { CreateTaskDialog } from "@/components/tasks/create-task-dialog"
+import { TasksListView } from "@/components/tasks/tasks-list-view"
 import { TimerWidget } from "@/components/timer/timer-widget"
 import { TimeLogsList } from "@/components/timer/time-logs-list"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, ArrowLeft, Clock, List } from "lucide-react"
+import { Plus, ArrowLeft, Clock, List, Table } from "lucide-react"
 import Link from "next/link"
 
 interface TasksPageProps {
@@ -19,9 +20,9 @@ interface TasksPageProps {
 }
 
 export default function TasksPage({ params }: TasksPageProps) {
-  const [currentUser, setCurrentUser] = useState(null)
-  const [project, setProject] = useState(null)
-  const [tasks, setTasks] = useState([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [project, setProject] = useState<any>(null)
+  const [tasks, setTasks] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
@@ -31,6 +32,7 @@ export default function TasksPage({ params }: TasksPageProps) {
       id: task.id,
       title: task.title || 'Untitled Task',
       description: task.description,
+      type: task.type,
       status: mapStatusToUI(task.status),
       priority: "medium", // Default priority since it's not in the API
       labels: task.label ? task.label.split(',').map((l: string) => l.trim()) : [],
@@ -39,13 +41,18 @@ export default function TasksPage({ params }: TasksPageProps) {
         id: task.project?.id || task.projectId,
         name: task.project?.title || 'Unknown Project'
       },
-      assigneeId: task.assignedTo,
-      assignee: task.assignee ? {
-        id: task.assignee.id,
-        name: task.assignee.name,
-        email: task.assignee.email,
-        image: undefined
-      } : null,
+      assignees: task.assignees ? task.assignees.map((assignee: any) => ({
+        id: assignee.id,
+        name: assignee.name,
+        email: assignee.email,
+        avatar: undefined
+      })) : [],
+      assignee: task.assignees && task.assignees.length === 1 ? {
+        id: task.assignees[0].id,
+        name: task.assignees[0].name,
+        email: task.assignees[0].email,
+        avatar: undefined
+      } : null, // Only set for single assignee (backward compatibility)
       timelineStart: task.endDate ? new Date(task.endDate) : null,
       timelineEnd: task.dueDate ? new Date(task.dueDate) : null,
       estimatedHours: null,
@@ -114,19 +121,15 @@ export default function TasksPage({ params }: TasksPageProps) {
   }, [params.id])
 
   const handleTaskCreated = async () => {
-    console.log("Task created successfully! Refreshing tasks...")
-    
     // Reload tasks data
     try {
       const tasksResponse = await fetch(`/api/tasks?projectId=${params.id}`)
       if (tasksResponse.ok) {
         const tasksData = await tasksResponse.json()
-        console.log("Refreshed API tasks data:", tasksData)
-        
+
         // Transform the data for UI components
         const transformedTasks = transformTaskData(tasksData)
         setTasks(transformedTasks)
-        console.log("Refreshed transformed tasks:", transformedTasks)
       }
     } catch (error) {
       console.error('Failed to refresh tasks:', error)
@@ -170,7 +173,7 @@ export default function TasksPage({ params }: TasksPageProps) {
           </Button>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">{project.title} - Tasks</h1>
-            <p className="text-muted-foreground">Manage tasks using the Kanban board</p>
+            <p className="text-muted-foreground">Manage tasks using Kanban board or list view</p>
           </div>
         </div>
         <CreateTaskDialog projectId={params.id} onTaskCreated={handleTaskCreated}>
@@ -187,6 +190,10 @@ export default function TasksPage({ params }: TasksPageProps) {
             <List className="h-4 w-4" />
             Kanban Board
           </TabsTrigger>
+          <TabsTrigger value="list" className="flex items-center gap-2">
+            <Table className="h-4 w-4" />
+            List View
+          </TabsTrigger>
           <TabsTrigger value="timer" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             Time Tracking
@@ -194,7 +201,28 @@ export default function TasksPage({ params }: TasksPageProps) {
         </TabsList>
         
         <TabsContent value="kanban">
-          <KanbanBoard tasks={tasks} projectId={params.id} />
+          <KanbanBoard 
+            tasks={tasks} 
+            onTaskMove={(taskId, newStatus) => console.log(`Moving task ${taskId} to ${newStatus}`)}
+            onTaskEdit={(task) => console.log("Edit task:", task)}
+            onTaskDelete={(taskId) => console.log("Delete task:", taskId)}
+            onCreateTask={(status) => console.log(`Creating task with status: ${status}`)}
+          />
+        </TabsContent>
+        
+        <TabsContent value="list">
+          <TasksListView
+            tasks={tasks}
+            onTaskEdit={(task) => {}}
+            onTaskDelete={(task) => {}}
+            onTaskMove={(taskId, newStatus) => {
+            handleTaskCreated() // Refresh data when status changes
+          }}
+            onTaskCreated={handleTaskCreated}
+            projectId={params.id}
+            enableRealTimeUpdates={true}
+            refreshInterval={15000} // 15 seconds for project-specific view
+          />
         </TabsContent>
         
         <TabsContent value="timer" className="space-y-6">

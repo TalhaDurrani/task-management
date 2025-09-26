@@ -22,11 +22,8 @@ export class ProjectService {
       const projects = await prisma.project.findMany({
         where: {
           workspaceId: user.workspaceId,
-          organizationId: user.organizationId,
-          OR: [
-            { userId: userId }, // Projects owned by user
-            { createdBy: userId } // Projects created by user
-          ]
+          organizationId: user.organizationId
+          // Remove the OR condition - users should see all projects in their workspace
         },
         include: {
           user: {
@@ -39,7 +36,7 @@ export class ProjectService {
           },
           tasks: {
             include: {
-              user: {
+              creator: {
                 select: {
                   id: true,
                   name: true,
@@ -68,18 +65,16 @@ export class ProjectService {
         owner: project.user,
         tasks: project.tasks.map(task => ({
           id: task.id,
+          title: task.title,
+          description: task.description,
           projectId: task.projectId,
-          userId: task.userId,
           createdBy: task.createdBy,
           completedAt: task.completedAt,
-          assignedTo: task.assignedTo,
           status: task.status,
-          label: task.label,
+          priority: task.priority,
           dueDate: task.dueDate,
-          endDate: task.endDate,
-          attachments: task.attachments,
           createdAt: task.createdAt,
-          assignee: task.user
+          creator: task.creator
         }))
       }))
     } catch (error) {
@@ -90,13 +85,22 @@ export class ProjectService {
 
   static async getProject(id: string, userId: string) {
     try {
+      // First get the user's workspace and organization
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true, organizationId: true }
+      })
+
+      if (!user || !user.workspaceId || !user.organizationId) {
+        throw new Error('User not assigned to workspace or organization')
+      }
+
       const project = await prisma.project.findFirst({
         where: {
           id: id,
-          OR: [
-            { userId: userId },
-            { createdBy: userId }
-          ]
+          workspaceId: user.workspaceId,
+          organizationId: user.organizationId
+          // Users should be able to access any project in their workspace
         },
         include: {
           user: {
@@ -107,15 +111,15 @@ export class ProjectService {
               role: true
             }
           },
-          tasks: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true
-                }
-              },
+           tasks: {
+             include: {
+               creator: {
+                 select: {
+                   id: true,
+                   name: true,
+                   email: true
+                 }
+               },
               comments: {
                 include: {
                   user: {
@@ -165,20 +169,18 @@ export class ProjectService {
         completedAt: project.completedAt,
         noOfAssignedUsers: project.noOfAssignedUsers,
         owner: project.user,
-        tasks: project.tasks.map(task => ({
-          id: task.id,
-          projectId: task.projectId,
-          userId: task.userId,
-          createdBy: task.createdBy,
-          completedAt: task.completedAt,
-          assignedTo: task.assignedTo,
-          status: task.status,
-          label: task.label,
-          dueDate: task.dueDate,
-          endDate: task.endDate,
-          attachments: task.attachments,
-          createdAt: task.createdAt,
-          assignee: task.user,
+         tasks: project.tasks.map(task => ({
+           id: task.id,
+           title: task.title,
+           description: task.description,
+           projectId: task.projectId,
+           createdBy: task.createdBy,
+           completedAt: task.completedAt,
+           status: task.status,
+           priority: task.priority,
+           dueDate: task.dueDate,
+           createdAt: task.createdAt,
+           creator: task.creator,
           comments: task.comments.map(comment => ({
             id: comment.id,
             taskId: comment.taskId,
@@ -314,7 +316,7 @@ export class ProjectService {
           },
           tasks: {
             include: {
-              user: {
+              creator: {
                 select: {
                   id: true,
                   name: true,
@@ -349,21 +351,19 @@ export class ProjectService {
         completedAt: project.completedAt,
         noOfAssignedUsers: project.noOfAssignedUsers,
         owner: project.user,
-        tasks: project.tasks.map(task => ({
-          id: task.id,
-          projectId: task.projectId,
-          userId: task.userId,
-          createdBy: task.createdBy,
-          completedAt: task.completedAt,
-          assignedTo: task.assignedTo,
-          status: task.status,
-          label: task.label,
-          dueDate: task.dueDate,
-          endDate: task.endDate,
-          attachments: task.attachments,
-          createdAt: task.createdAt,
-          assignee: task.user
-        }))
+         tasks: project.tasks.map(task => ({
+           id: task.id,
+           title: task.title,
+           description: task.description,
+           projectId: task.projectId,
+           createdBy: task.createdBy,
+           completedAt: task.completedAt,
+           status: task.status,
+           priority: task.priority,
+           dueDate: task.dueDate,
+           createdAt: task.createdAt,
+           creator: task.creator
+         }))
       }
     } catch (error) {
       console.error('Error updating project:', error)

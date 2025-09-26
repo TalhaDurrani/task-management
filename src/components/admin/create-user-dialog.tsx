@@ -22,8 +22,8 @@ const createUserSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   role: z.enum(["USER", "ADMIN", "SUPER_ADMIN"]),
-  organizationId: z.string().optional(),
-  workspaceId: z.string().optional()
+  organizationId: z.string().min(1, "Organization is required"),
+  workspaceId: z.string().min(1, "Workspace is required")
 })
 
 type CreateUserFormData = z.infer<typeof createUserSchema>
@@ -87,11 +87,7 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...data,
-          organizationId: data.organizationId || null,
-          workspaceId: data.workspaceId || null
-        })
+        body: JSON.stringify(data)
       })
 
       if (!response.ok) {
@@ -117,7 +113,7 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
         <DialogHeader>
           <DialogTitle>Create New User</DialogTitle>
           <DialogDescription>
-            Add a new user to the system. You can assign them to an organization and workspace.
+            Add a new user to the system. Organization and workspace assignment is required.
           </DialogDescription>
         </DialogHeader>
 
@@ -178,13 +174,12 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="organizationId">Organization (Optional)</Label>
-            <Select value={form.watch("organizationId") || "none"} onValueChange={(value) => form.setValue("organizationId", value === "none" ? "" : value)}>
+            <Label htmlFor="organizationId">Organization *</Label>
+            <Select value={form.watch("organizationId")} onValueChange={(value) => form.setValue("organizationId", value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select organization" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No organization</SelectItem>
                 {organizations.map((org: any) => (
                   <SelectItem key={org.id} value={org.id}>
                     {org.name}
@@ -192,16 +187,18 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
                 ))}
               </SelectContent>
             </Select>
+            {form.formState.errors.organizationId && (
+              <p className="text-sm text-destructive">{form.formState.errors.organizationId.message}</p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="workspaceId">Workspace (Optional)</Label>
-            <Select value={form.watch("workspaceId") || "none"} onValueChange={(value) => form.setValue("workspaceId", value === "none" ? "" : value)}>
+            <Label htmlFor="workspaceId">Workspace *</Label>
+            <Select value={form.watch("workspaceId")} onValueChange={(value) => form.setValue("workspaceId", value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select workspace" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No workspace</SelectItem>
                 {workspaces.map((workspace: any) => (
                   <SelectItem key={workspace.id} value={workspace.id}>
                     {workspace.name}
@@ -209,6 +206,9 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
                 ))}
               </SelectContent>
             </Select>
+            {form.formState.errors.workspaceId && (
+              <p className="text-sm text-destructive">{form.formState.errors.workspaceId.message}</p>
+            )}
           </div>
 
           <div className="flex justify-end space-x-2 pt-4">

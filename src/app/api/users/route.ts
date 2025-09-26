@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
         _count: {
           select: {
             projects: true,
-            tasks: true
+            createdTasks: true,
+            assignedTasks: true
           }
         }
       },
@@ -75,6 +76,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name, email, and password are required" }, { status: 400 })
     }
 
+    // Validate organization and workspace are required
+    if (!organizationId || !workspaceId) {
+      return NextResponse.json({ error: "Organization and workspace are required" }, { status: 400 })
+    }
+
+    // Verify organization exists
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId }
+    })
+    if (!organization) {
+      return NextResponse.json({ error: "Invalid organization" }, { status: 400 })
+    }
+
+    // Verify workspace exists and belongs to the organization
+    const workspace = await prisma.workspace.findFirst({
+      where: { 
+        id: workspaceId,
+        organizationId: organizationId
+      }
+    })
+    if (!workspace) {
+      return NextResponse.json({ error: "Invalid workspace or workspace does not belong to the selected organization" }, { status: 400 })
+    }
+
     // Validate role
     if (role && !["USER", "ADMIN", "SUPER_ADMIN"].includes(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 })
@@ -99,8 +124,8 @@ export async function POST(request: NextRequest) {
         email,
         password: hashedPassword,
         role: role || "USER",
-        organizationId: organizationId || null,
-        workspaceId: workspaceId || null
+        organizationId: organizationId,
+        workspaceId: workspaceId
       },
       select: {
         id: true,

@@ -6,24 +6,21 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
-  Plus, 
   Search, 
-  Grid3X3,
-  List,
-  CheckCircle2,
-  AlertCircle,
-  Circle
+  Grid3X3, 
+  LayoutGrid,
+  Table
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { CreateTaskDialog } from "@/components/tasks/create-task-dialog"
 import { TaskCard } from "@/components/tasks/task-card"
 import { SimpleKanban } from "@/components/tasks/simple-kanban"
+import { TasksListView } from "@/components/tasks/tasks-list-view"
 
 export default function TasksPage() {
   const [currentUser, setCurrentUser] = useState(null)
-  const [allTasks, setAllTasks] = useState([])
-  const [projects, setProjects] = useState([])
+  const [allTasks, setAllTasks] = useState<any[]>([])
+  const [projects, setProjects] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"grid" | "list" | "kanban">("kanban")
   const [sortBy, setSortBy] = useState("createdAt")
@@ -39,6 +36,7 @@ export default function TasksPage() {
       id: task.id,
       title: task.title || 'Untitled Task',
       description: task.description,
+      type: task.type,
       status: mapStatusToUI(task.status),
       priority: "medium", // Default priority since it's not in the API
       labels: task.label ? task.label.split(',').map((l: string) => l.trim()) : [],
@@ -47,13 +45,18 @@ export default function TasksPage() {
         id: task.project?.id || task.projectId,
         name: task.project?.title || 'Unknown Project'
       },
-      assigneeId: task.assignedTo,
-      assignee: task.assignee ? {
-        id: task.assignee.id,
-        name: task.assignee.name,
-        email: task.assignee.email,
-        image: undefined
-      } : null,
+      assignees: task.assignees ? task.assignees.map((assignee: any) => ({
+        id: assignee.id,
+        name: assignee.name,
+        email: assignee.email,
+        avatar: undefined
+      })) : [],
+      assignee: task.assignees && task.assignees.length === 1 ? {
+        id: task.assignees[0].id,
+        name: task.assignees[0].name,
+        email: task.assignees[0].email,
+        avatar: undefined
+      } : null, // Only set for single assignee (backward compatibility)
       timelineStart: task.endDate ? new Date(task.endDate) : null,
       timelineEnd: task.dueDate ? new Date(task.dueDate) : null,
       estimatedHours: null,
@@ -108,7 +111,6 @@ export default function TasksPage() {
             // Transform the data for UI components
             const transformedTasks = transformTaskData(allTasksData)
             setAllTasks(transformedTasks)
-            console.log("Loaded tasks:", transformedTasks.length, "tasks")
           }
         } else {
           router.push("/auth/signin?callbackUrl=/dashboard/tasks")
@@ -146,7 +148,6 @@ export default function TasksPage() {
   }
 
   const handleTaskCreated = async () => {
-    console.log("Task created successfully! Refreshing tasks...")
     
     // Reload tasks data
     try {
@@ -165,18 +166,16 @@ export default function TasksPage() {
       // Transform the data for UI components
       const transformedTasks = transformTaskData(allTasksData)
       setAllTasks(transformedTasks)
-      console.log("Tasks refreshed:", transformedTasks.length, "tasks loaded")
     } catch (error) {
       console.error('Failed to refresh tasks:', error)
     }
   }
 
   const handleEditTask = (task: any) => {
-    console.log("Edit task:", task)
   }
 
-  const handleDeleteTask = (taskId: string) => {
-    console.log("Delete task:", taskId)
+  const handleDeleteTask = (taskOrId: any) => {
+    const taskId = typeof taskOrId === 'string' ? taskOrId : taskOrId.id
   }
 
   // Filter and sort tasks
@@ -195,8 +194,8 @@ export default function TasksPage() {
       case "title":
         return a.title.localeCompare(b.title)
       case "priority":
-        const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 }
-        return priorityOrder[b.priority] - priorityOrder[a.priority]
+        const priorityOrder: { [key: string]: number } = { critical: 4, high: 3, medium: 2, low: 1 }
+        return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0)
       case "dueDate":
         if (!a.timelineEnd && !b.timelineEnd) return 0
         if (!a.timelineEnd) return 1
@@ -216,12 +215,6 @@ export default function TasksPage() {
             Manage and track all your tasks across projects
           </p>
         </div>
-        <CreateTaskDialog onTaskCreated={handleTaskCreated}>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Task
-          </Button>
-        </CreateTaskDialog>
       </div>
 
       {/* Filters and Controls */}
@@ -311,7 +304,7 @@ export default function TasksPage() {
                 onClick={() => setViewMode("grid")}
                 title="Grid View"
               >
-                <Grid3X3 className="h-4 w-4" />
+                <LayoutGrid className="h-4 w-4" />
               </Button>
               <Button
                 variant={viewMode === "list" ? "default" : "outline"}
@@ -319,7 +312,7 @@ export default function TasksPage() {
                 onClick={() => setViewMode("list")}
                 title="List View"
               >
-                <List className="h-4 w-4" />
+                <Table className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -356,32 +349,33 @@ export default function TasksPage() {
                   : "Get started by creating your first task."
                 }
               </p>
-              <CreateTaskDialog onTaskCreated={handleTaskCreated}>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Task
-                </Button>
-              </CreateTaskDialog>
             </CardContent>
           </Card>
         ) : viewMode === "kanban" ? (
           <SimpleKanban
             tasks={sortedTasks}
             onTaskMove={(taskId, newStatus) => {
-              console.log(`Moving task ${taskId} to ${newStatus}`)
+              handleTaskCreated() // Refresh data when status changes
             }}
             onTaskEdit={handleEditTask}
             onTaskDelete={handleDeleteTask}
             onCreateTask={(status) => {
-              console.log(`Creating task with status: ${status}`)
+              handleTaskCreated() // Refresh data when task is created
             }}
           />
+        ) : viewMode === "list" ? (
+          <TasksListView
+            tasks={sortedTasks}
+            onTaskEdit={handleEditTask}
+            onTaskDelete={handleDeleteTask}
+            onTaskMove={(taskId, newStatus) => {
+              handleTaskCreated() // Refresh data when status changes
+            }}
+            onTaskCreated={handleTaskCreated}
+            enableRealTimeUpdates={false} // Disabled for multi-project view
+          />
         ) : (
-          <div className={
-            viewMode === "grid" 
-              ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
-              : "space-y-3"
-          }>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {sortedTasks.map((task) => (
               <TaskCard
                 key={task.id}

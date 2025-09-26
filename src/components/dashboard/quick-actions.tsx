@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { 
-  Plus, 
   FolderPlus, 
   Clock, 
   Users, 
@@ -14,11 +13,9 @@ import {
   FileText
 } from "lucide-react"
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
-import { CreateTaskDialog } from "@/components/tasks/create-task-dialog"
 
 export function QuickActions() {
   const [showCreateProject, setShowCreateProject] = useState(false)
-  const [showCreateTask, setShowCreateTask] = useState(false)
   const router = useRouter()
 
   const actions = [
@@ -29,14 +26,6 @@ export function QuickActions() {
       onClick: () => setShowCreateProject(true),
       color: "text-blue-600",
       bgColor: "bg-blue-50 dark:bg-blue-950/20"
-    },
-    {
-      title: "Add Task",
-      description: "Create a new task",
-      icon: Plus,
-      onClick: () => setShowCreateTask(true),
-      color: "text-green-600",
-      bgColor: "bg-green-50 dark:bg-green-950/20"
     },
     {
       title: "Log Time",
@@ -106,11 +95,6 @@ export function QuickActions() {
       <CreateProjectDialog 
         open={showCreateProject} 
         onOpenChange={setShowCreateProject} 
-      />
-      
-      <CreateTaskDialog 
-        open={showCreateTask} 
-        onOpenChange={setShowCreateTask} 
       />
     </>
   )

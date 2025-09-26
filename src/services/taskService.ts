@@ -1,17 +1,55 @@
 import { prisma } from '@/lib/db'
-import type { CreateTaskData, UpdateTaskData, TaskStatus } from "@/types"
+import type { CreateTaskData, UpdateTaskData } from "@/types"
+import { StatusService } from './statusService'
+import { TypeService } from './typeService'
+import { Status, StatusCategory } from '@prisma/client'
+
+// Simple status mapping functions
+const mapStatusToDb = (status: string): 'TODO' | 'IN_PROGRESS' | 'DONE' => {
+  switch (status) {
+    case 'todo':
+      return 'TODO'
+    case 'in-progress':
+      return 'IN_PROGRESS'
+    case 'done':
+      return 'DONE'
+    default:
+      return 'TODO' // Default fallback
+  }
+}
+
+const mapStatusFromDb = (status: string): 'todo' | 'in-progress' | 'done' => {
+  switch (status) {
+    case 'TODO':
+      return 'todo'
+    case 'IN_PROGRESS':
+      return 'in-progress'
+    case 'DONE':
+      return 'done'
+    default:
+      return 'todo' // Default fallback
+  }
+}
 
 export class TaskService {
   static async getTasks(projectId: string, userId: string) {
     try {
-      // First check if user has access to the project
+      // Get the user's workspace and organization
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true, organizationId: true }
+      })
+
+      if (!user || !user.workspaceId || !user.organizationId) {
+        throw new Error('User not assigned to workspace or organization')
+      }
+
+      // Check if user has access to the project (same workspace and organization)
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          OR: [
-            { userId: userId },
-            { createdBy: userId }
-          ]
+          workspaceId: user.workspaceId,
+          organizationId: user.organizationId
         }
       })
 
@@ -24,11 +62,22 @@ export class TaskService {
           projectId: projectId
         },
         include: {
-          user: {
+          creator: {
             select: {
               id: true,
               name: true,
               email: true
+            }
+          },
+          assignees: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
             }
           },
           project: {
@@ -52,6 +101,11 @@ export class TaskService {
               createdAt: 'desc'
             }
           },
+          subTasks: {
+            orderBy: {
+              createdAt: 'asc'
+            }
+          },
           timeLogs: {
             include: {
               user: {
@@ -64,6 +118,25 @@ export class TaskService {
             },
             orderBy: {
               logDate: 'desc'
+            }
+          },
+          attachments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              uploadedAt: 'desc'
+            }
+          },
+          customFields: {
+            include: {
+              customField: true
             }
           }
         },
@@ -76,18 +149,16 @@ export class TaskService {
         id: task.id,
         title: task.title,
         description: task.description,
+        type: task.type || 'task',
         projectId: task.projectId,
-        userId: task.userId,
         createdBy: task.createdBy,
         completedAt: task.completedAt,
-        assignedTo: task.assignedTo,
-        status: task.status,
-        label: task.label,
+        priority: task.priority.toLowerCase(),
+        status: mapStatusFromDb(task.status),
         dueDate: task.dueDate,
-        endDate: task.endDate,
-        attachments: task.attachments,
         createdAt: task.createdAt,
-        assignee: task.user,
+        creator: task.creator,
+        assignees: task.assignees.map(ta => ta.user),
         project: task.project,
         comments: task.comments.map(comment => ({
           id: comment.id,
@@ -98,41 +169,88 @@ export class TaskService {
           updatedAt: comment.updatedAt,
           user: comment.user
         })),
+        subTasks: task.subTasks.map(subTask => ({
+          id: subTask.id,
+          taskId: subTask.taskId,
+          title: subTask.title,
+          description: subTask.description,
+          completed: subTask.completed,
+          createdAt: subTask.createdAt,
+          updatedAt: subTask.updatedAt
+        })),
         timeLogs: task.timeLogs.map(timeLog => ({
           id: timeLog.id,
           taskId: timeLog.taskId,
           userId: timeLog.userId,
-          hoursSpent: timeLog.hoursSpent,
-          description: timeLog.description,
           logDate: timeLog.logDate,
+          hours: timeLog.hours,
+          description: timeLog.description,
           createdAt: timeLog.createdAt,
+          updatedAt: timeLog.updatedAt,
           user: timeLog.user
+        })),
+        attachments: task.attachments.map(attachment => ({
+          id: attachment.id,
+          taskId: attachment.taskId,
+          fileName: attachment.fileName,
+          filePath: attachment.filePath,
+          fileSize: attachment.fileSize,
+          mimeType: attachment.mimeType,
+          uploadedBy: attachment.uploadedBy,
+          uploadedAt: attachment.uploadedAt,
+          user: attachment.user
+        })),
+        customFields: task.customFields.map(tcf => ({
+          id: tcf.id,
+          taskId: tcf.taskId,
+          customFieldId: tcf.customFieldId,
+          value: tcf.value,
+          customField: tcf.customField
         }))
       }))
     } catch (error) {
-      console.error('Error fetching tasks:', error)
-      throw new Error('Failed to fetch tasks')
+      console.error('Error in TaskService.getTasks:', error)
+      throw error
     }
   }
 
-  static async getTask(id: string, userId: string) {
+  static async getTask(taskId: string, userId: string) {
     try {
+      // Get the user's workspace and organization
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true, organizationId: true }
+      })
+
+      if (!user || !user.workspaceId || !user.organizationId) {
+        throw new Error('User not assigned to workspace or organization')
+      }
+
       const task = await prisma.task.findFirst({
         where: {
-          id: id,
+          id: taskId,
           project: {
-            OR: [
-              { userId: userId },
-              { createdBy: userId }
-            ]
+            workspaceId: user.workspaceId,
+            organizationId: user.organizationId
           }
         },
         include: {
-          user: {
+          creator: {
             select: {
               id: true,
               name: true,
               email: true
+            }
+          },
+          assignees: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
             }
           },
           project: {
@@ -156,6 +274,11 @@ export class TaskService {
               createdAt: 'desc'
             }
           },
+          subTasks: {
+            orderBy: {
+              createdAt: 'asc'
+            }
+          },
           timeLogs: {
             include: {
               user: {
@@ -170,7 +293,7 @@ export class TaskService {
               logDate: 'desc'
             }
           },
-          subTasks: {
+          attachments: {
             include: {
               user: {
                 select: {
@@ -179,6 +302,14 @@ export class TaskService {
                   email: true
                 }
               }
+            },
+            orderBy: {
+              uploadedAt: 'desc'
+            }
+          },
+          customFields: {
+            include: {
+              customField: true
             }
           }
         }
@@ -190,18 +321,19 @@ export class TaskService {
 
       return {
         id: task.id,
+        title: task.title,
+        description: task.description,
+        type: task.type || 'task',
         projectId: task.projectId,
-        userId: task.userId,
         createdBy: task.createdBy,
         completedAt: task.completedAt,
-        assignedTo: task.assignedTo,
-        status: task.status,
-        label: task.label,
+        priority: task.priority.toLowerCase(),
+        status: mapStatusFromDb(task.status),
         dueDate: task.dueDate,
-        endDate: task.endDate,
-        attachments: task.attachments,
         createdAt: task.createdAt,
-        assignee: task.user,
+        updatedAt: task.updatedAt,
+        creator: task.creator,
+        assignees: task.assignees.map(ta => ta.user),
         project: task.project,
         comments: task.comments.map(comment => ({
           id: comment.id,
@@ -212,135 +344,205 @@ export class TaskService {
           updatedAt: comment.updatedAt,
           user: comment.user
         })),
+        subTasks: task.subTasks.map(subTask => ({
+          id: subTask.id,
+          taskId: subTask.taskId,
+          title: subTask.title,
+          description: subTask.description,
+          completed: subTask.completed,
+          createdAt: subTask.createdAt,
+          updatedAt: subTask.updatedAt
+        })),
         timeLogs: task.timeLogs.map(timeLog => ({
           id: timeLog.id,
           taskId: timeLog.taskId,
           userId: timeLog.userId,
-          hoursSpent: timeLog.hoursSpent,
-          description: timeLog.description,
           logDate: timeLog.logDate,
+          hours: timeLog.hours,
+          description: timeLog.description,
           createdAt: timeLog.createdAt,
+          updatedAt: timeLog.updatedAt,
           user: timeLog.user
         })),
-        subTasks: task.subTasks.map(subTask => ({
-          id: subTask.id,
-          taskId: subTask.taskId,
-          userId: subTask.userId,
-          title: subTask.title,
-          description: subTask.description,
-          attachments: subTask.attachments,
-          user: subTask.user
+        attachments: task.attachments.map(attachment => ({
+          id: attachment.id,
+          taskId: attachment.taskId,
+          fileName: attachment.fileName,
+          filePath: attachment.filePath,
+          fileSize: attachment.fileSize,
+          mimeType: attachment.mimeType,
+          uploadedBy: attachment.uploadedBy,
+          uploadedAt: attachment.uploadedAt,
+          user: attachment.user
+        })),
+        customFields: task.customFields.map(tcf => ({
+          id: tcf.id,
+          taskId: tcf.taskId,
+          customFieldId: tcf.customFieldId,
+          value: tcf.value,
+          customField: tcf.customField
         }))
       }
     } catch (error) {
-      console.error('Error fetching task:', error)
-      throw new Error('Failed to fetch task')
+      console.error('Error in TaskService.getTask:', error)
+      throw error
     }
+  }
+
+  // Helper method to validate user and workspace
+  private static async validateUserAndWorkspace(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { workspaceId: true, organizationId: true }
+    })
+
+    if (!user || !user.workspaceId || !user.organizationId) {
+      throw new Error('User not assigned to workspace or organization')
+    }
+
+    return user
   }
 
   static async createTask(data: CreateTaskData, userId: string) {
     try {
-      // Check if user has access to the project
-      const project = await prisma.project.findFirst({
-        where: {
-          id: data.projectId,
-          OR: [
-            { userId: userId },
-            { createdBy: userId }
-          ]
-        }
-      })
+      // Validate user and workspace
+      const user = await this.validateUserAndWorkspace(userId)
 
-      if (!project) {
-        throw new Error('Project not found or access denied')
+      // Handle custom status creation if needed
+      let customStatus = data.customStatus
+      let statusCategory: StatusCategory = StatusCategory.BACKLOG
+
+      if (data.customStatus && user.workspaceId) {
+        // Convert frontend status category to Prisma enum
+        const prismaStatusCategory = data.statusCategory ? 
+          this.convertStatusCategoryToPrisma(data.statusCategory) : 
+          StatusCategory.BACKLOG
+
+        const createdStatus = await StatusService.createCustomStatus(
+          user.workspaceId, 
+          {
+            name: data.customStatus,
+            category: prismaStatusCategory
+          }
+        )
+        customStatus = createdStatus.name
+        statusCategory = createdStatus.category
       }
 
+      // Handle custom type creation if needed
+      let taskType = data.type || 'task' // Default type
+      if (data.customType && user.workspaceId) {
+        const createdType = await TypeService.createCustomType(
+          user.workspaceId,
+          {
+            name: data.customType,
+            color: '#6B7280' // Default color
+          }
+        )
+        taskType = createdType.name
+      }
+
+      // Handle status conversion properly
+      let taskStatus: Status = 'TODO' // Default
+      if (data.status) {
+        if (typeof data.status === 'string') {
+          taskStatus = mapStatusToDb(data.status)
+        } else if (typeof data.status === 'object' && 'name' in data.status) {
+          taskStatus = mapStatusToDb(data.status.name)
+        }
+      }
+
+      // Create task with comprehensive status and type management
       const task = await prisma.task.create({
         data: {
-          projectId: data.projectId,
           title: data.title,
           description: data.description,
-          userId: data.assignedTo || userId,
+          projectId: data.projectId,
           createdBy: userId,
-          assignedTo: data.assignedTo,
-          status: data.status || 'PENDING',
-          label: data.label,
+          status: taskStatus,
+          customStatus: customStatus,
+          statusCategory: statusCategory,
+          priority: data.priority ? data.priority.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' : 'MEDIUM',
           dueDate: data.dueDate,
-          endDate: data.endDate,
-          attachments: data.attachments
+          type: taskType
         },
         include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          project: {
-            select: {
-              id: true,
-              title: true,
-              description: true
+          project: { select: { id: true, title: true, description: true } },
+          creator: { select: { id: true, name: true, email: true } },
+          assignees: {
+            include: {
+              user: { select: { id: true, name: true, email: true } }
             }
           }
         }
       })
 
-      // Create activity log
-      await prisma.activity.create({
-        data: {
-          userId: userId,
-          type: 'task_created',
-          title: 'Task Created',
-          message: `Task "${task.title}" was created in project "${project.title}"`,
-          taskId: task.id,
-          projectId: project.id
-        }
-      })
+      // Handle assignees if provided
+      if (data.assignees && data.assignees.length > 0) {
+        await prisma.taskAssignee.createMany({
+          data: data.assignees.map(userId => ({
+            taskId: task.id,
+            userId: userId
+          }))
+        })
+      }
 
       return {
         id: task.id,
-        projectId: task.projectId,
         title: task.title,
         description: task.description,
-        userId: task.userId,
-        createdBy: task.createdBy,
-        completedAt: task.completedAt,
-        assignedTo: task.assignedTo,
-        status: task.status,
-        label: task.label,
-        dueDate: task.dueDate,
-        endDate: task.endDate,
-        attachments: task.attachments,
+        status: mapStatusFromDb(task.status),
+        customStatus: task.customStatus,
+        statusCategory: task.statusCategory,
+        priority: task.priority.toLowerCase(),
+        type: task.type,
         createdAt: task.createdAt,
-        assignee: task.user,
+        completedAt: task.completedAt,
+        dueDate: task.dueDate,
         project: task.project,
-        comments: [],
-        timeLogs: [],
-        subTasks: []
+        creator: task.creator,
+        assignees: task.assignees.map(a => a.user)
       }
     } catch (error) {
-      console.error('Error creating task:', error)
-      throw new Error('Failed to create task')
+      console.error('Task creation error:', error)
+      throw error
     }
   }
 
-  static async updateTask(id: string, data: UpdateTaskData, userId: string) {
+  // Helper method to convert frontend StatusCategory to Prisma StatusCategory
+  private static convertStatusCategoryToPrisma(category: string): StatusCategory {
+    switch (category) {
+      case 'not-started':
+        return StatusCategory.BACKLOG
+      case 'in-progress':
+        return StatusCategory.IN_PROGRESS
+      case 'completed':
+        return StatusCategory.COMPLETED
+      default:
+        return StatusCategory.BACKLOG
+    }
+  }
+
+  static async updateTask(taskId: string, data: UpdateTaskData, userId: string) {
     try {
-      // Check if user has access to the task
+      // Get the user's workspace and organization
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true, organizationId: true }
+      })
+
+      if (!user || !user.workspaceId || !user.organizationId) {
+        throw new Error('User not assigned to workspace or organization')
+      }
+
+      // Verify task access (same workspace and organization)
       const existingTask = await prisma.task.findFirst({
         where: {
-          id: id,
+          id: taskId,
           project: {
-            OR: [
-              { userId: userId },
-              { createdBy: userId }
-            ]
+            workspaceId: user.workspaceId,
+            organizationId: user.organizationId
           }
-        },
-        include: {
-          project: true
         }
       })
 
@@ -348,30 +550,334 @@ export class TaskService {
         throw new Error('Task not found or access denied')
       }
 
-      const task = await prisma.task.update({
-        where: { id: id },
-        data: {
-          assignedTo: data.assignedTo,
-          status: data.status,
-          label: data.label,
-          dueDate: data.dueDate,
-          endDate: data.endDate,
-          attachments: data.attachments,
-          completedAt: data.status === 'DONE' ? new Date() : null
-        },
+      // Prepare update data with robust type conversion
+      const updateData: any = {}
+
+      // Handle title update
+      if (data.title !== undefined) {
+        updateData.title = data.title
+      }
+
+      // Handle description update
+      if (data.description !== undefined) {
+        updateData.description = data.description
+      }
+
+      // Handle status update with specific conversion
+      if (data.status !== undefined) {
+        updateData.status = typeof data.status === 'string' 
+          ? data.status.toUpperCase() as 'TODO' | 'IN_PROGRESS' | 'DONE'
+          : data.status?.name
+
+        // Set completion timestamp for 'DONE' status
+        updateData.completedAt = updateData.status === 'DONE' 
+          ? new Date() 
+          : null
+      }
+
+      // Handle priority update
+      if (data.priority !== undefined) {
+        updateData.priority = typeof data.priority === 'string'
+          ? data.priority.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+          : data.priority
+      }
+
+      // Handle due date update
+      if (data.dueDate !== undefined) {
+        updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null
+      }
+
+      // Perform the update
+      const updatedTask = await prisma.task.update({
+        where: { id: taskId },
+        data: updateData,
         include: {
-          user: {
+          project: {
+            select: {
+              id: true,
+              title: true
+            }
+          },
+          creator: {
             select: {
               id: true,
               name: true,
               email: true
             }
           },
+          assignees: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            }
+          }
+        }
+      })
+
+      // Return transformed task data
+      return {
+        id: updatedTask.id,
+        title: updatedTask.title,
+        description: updatedTask.description,
+        status: updatedTask.status.toLowerCase(),
+        priority: updatedTask.priority.toLowerCase(),
+        type: updatedTask.type,
+        createdAt: updatedTask.createdAt,
+        updatedAt: updatedTask.updatedAt,
+        completedAt: updatedTask.completedAt,
+        project: updatedTask.project,
+        creator: updatedTask.creator,
+        assignees: updatedTask.assignees.map(a => a.user)
+      }
+    } catch (error) {
+      console.error('Error in TaskService.updateTask:', error)
+      throw error
+    }
+  }
+
+  // Advanced status update method
+  static async updateTaskStatus(
+    taskId: string, 
+    newStatus: string, 
+    userId: string,
+    options?: { 
+      customStatus?: string 
+      force?: boolean 
+    }
+  ) {
+    try {
+      // Get the user's workspace and organization for validation
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true, organizationId: true }
+      })
+
+      if (!user || !user.workspaceId || !user.organizationId) {
+        throw new Error('User not assigned to workspace or organization')
+      }
+
+      // Convert string status to enum - handle both UI and API formats
+      let statusEnum: Status
+      switch (newStatus.toLowerCase()) {
+        case 'todo':
+        case 'backlog':
+          statusEnum = 'TODO'
+          break
+        case 'in-progress':
+        case 'in_progress':
+        case 'inprogress':
+        case 'doing':
+          statusEnum = 'IN_PROGRESS'
+          break
+        case 'done':
+        case 'completed':
+        case 'complete':
+          statusEnum = 'DONE'
+          break
+        default:
+          statusEnum = newStatus.toUpperCase() as Status || 'TODO'
+      }
+
+      // Fetch current task with access validation
+      const task = await prisma.task.findFirst({
+        where: {
+          id: taskId,
+          project: {
+            workspaceId: user.workspaceId,
+            organizationId: user.organizationId
+          }
+        },
+        include: { 
+          assignees: { 
+            include: { user: true } 
+          },
+          project: { select: { id: true, title: true, description: true } },
+          creator: { select: { id: true, name: true, email: true } }
+        }
+      })
+
+      if (!task) {
+        throw new Error('Task not found or access denied')
+      }
+
+      // For now, allow all status transitions by default (force = true by default)
+      // This can be made configurable later if stricter validation is needed
+      const shouldForceTransition = options?.force !== false
+
+      // Validate status transition only if force is explicitly set to false
+      if (!shouldForceTransition) {
+        const isValidTransition = StatusService.validateStatusTransition(
+          task.status, 
+          statusEnum
+        )
+
+        if (!isValidTransition) {
+          throw new Error(`Invalid status transition from ${task.status} to ${statusEnum}`)
+        }
+      }
+
+      // Update task with comprehensive status management using transaction
+      console.log(`🔄 Updating task ${taskId} status from ${task.status} to ${statusEnum}`)
+      
+      const result = await prisma.$transaction(async (tx) => {
+        const updatedTask = await tx.task.update({
+          where: { id: taskId },
+          data: {
+            status: statusEnum,
+            customStatus: options?.customStatus,
+            statusCategory: this.determineStatusCategory(statusEnum),
+            completedAt: statusEnum === 'DONE' ? new Date() : (statusEnum === 'TODO' ? null : task.completedAt)
+          },
+          include: {
+            project: { select: { id: true, title: true, description: true } },
+            creator: { select: { id: true, name: true, email: true } },
+            assignees: {
+              include: {
+                user: { select: { id: true, name: true, email: true } }
+              }
+            }
+          }
+        })
+
+        console.log(`✅ Task ${taskId} updated successfully. New status: ${updatedTask.status}`)
+        
+        return updatedTask
+      })
+      
+      // Verify the update was actually saved by querying the database again
+      const verificationTask = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: { id: true, status: true, completedAt: true }
+      })
+      
+      console.log(`🔍 Verification query - Task ${taskId} status in DB: ${verificationTask?.status}`)
+      
+      const updatedTask = result
+
+      // Return task in UI format - consistent with frontend expectations
+      return {
+        id: updatedTask.id,
+        title: updatedTask.title,
+        description: updatedTask.description,
+        status: mapStatusFromDb(updatedTask.status), // Convert to lowercase format
+        customStatus: updatedTask.customStatus,
+        statusCategory: updatedTask.statusCategory,
+        priority: updatedTask.priority.toLowerCase(),
+        type: updatedTask.type,
+        createdAt: updatedTask.createdAt,
+        completedAt: updatedTask.completedAt,
+        dueDate: updatedTask.dueDate,
+        project: updatedTask.project,
+        creator: updatedTask.creator,
+        assignees: updatedTask.assignees.map(a => a.user)
+      }
+    } catch (error) {
+      console.error('Status update error:', error)
+      throw error
+    }
+  }
+
+  static async deleteTask(taskId: string, userId: string) {
+    try {
+      // Get the user's workspace and organization
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true, organizationId: true }
+      })
+
+      if (!user || !user.workspaceId || !user.organizationId) {
+        throw new Error('User not assigned to workspace or organization')
+      }
+
+      // Verify task access (same workspace and organization)
+      const task = await prisma.task.findFirst({
+        where: {
+          id: taskId,
+          project: {
+            workspaceId: user.workspaceId,
+            organizationId: user.organizationId
+          }
+        }
+      })
+
+      if (!task) {
+        throw new Error('Task not found or access denied')
+      }
+
+      // Delete the task (cascade will handle related records)
+      await prisma.task.delete({
+        where: { id: taskId }
+      })
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error in TaskService.deleteTask:', error)
+      throw error
+    }
+  }
+
+  // Get tasks assigned to a specific user
+  static async getUserAssignedTasks(userId: string) {
+    try {
+      // Get user's workspace and organization for proper isolation
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true, organizationId: true }
+      })
+
+      if (!user || !user.workspaceId || !user.organizationId) {
+        throw new Error('User not assigned to workspace or organization')
+      }
+
+      // Get all tasks assigned to this user in their workspace
+      const tasks = await prisma.task.findMany({
+        where: {
+          assignees: {
+            some: {
+              userId: userId
+            }
+          },
+          // Ensure tasks are from projects in the same workspace/organization
+          project: {
+            workspaceId: user.workspaceId,
+            organizationId: user.organizationId
+          }
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          assignees: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            }
+          },
           project: {
             select: {
               id: true,
               title: true,
-              description: true
+              description: true,
+              workspace: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
             }
           },
           comments: {
@@ -387,217 +893,53 @@ export class TaskService {
             orderBy: {
               createdAt: 'desc'
             }
-          },
-          timeLogs: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true
-                }
-              }
-            },
-            orderBy: {
-              logDate: 'desc'
-            }
           }
+        },
+        orderBy: {
+          createdAt: 'desc'
         }
       })
 
-      // Create activity log
-      await prisma.activity.create({
-        data: {
-          userId: userId,
-          type: 'task_updated',
-          title: 'Task Updated',
-          message: `Task "${task.label || 'Untitled'}" was updated`,
-          taskId: task.id,
-          projectId: task.projectId
-        }
-      })
-
-      return {
+      return tasks.map(task => ({
         id: task.id,
-        projectId: task.projectId,
-        userId: task.userId,
-        createdBy: task.createdBy,
-        completedAt: task.completedAt,
-        assignedTo: task.assignedTo,
-        status: task.status,
-        label: task.label,
-        dueDate: task.dueDate,
-        endDate: task.endDate,
-        attachments: task.attachments,
+        title: task.title,
+        description: task.description,
+        status: mapStatusFromDb(task.status),
+        customStatus: task.customStatus,
+        statusCategory: task.statusCategory,
+        priority: task.priority.toLowerCase(),
+        type: task.type,
         createdAt: task.createdAt,
-        assignee: task.user,
+        completedAt: task.completedAt,
+        dueDate: task.dueDate,
         project: task.project,
-        comments: task.comments.map(comment => ({
-          id: comment.id,
-          taskId: comment.taskId,
-          userId: comment.userId,
-          content: comment.content,
-          createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt,
-          user: comment.user
-        })),
-        timeLogs: task.timeLogs.map(timeLog => ({
-          id: timeLog.id,
-          taskId: timeLog.taskId,
-          userId: timeLog.userId,
-          hoursSpent: timeLog.hoursSpent,
-          description: timeLog.description,
-          logDate: timeLog.logDate,
-          createdAt: timeLog.createdAt,
-          user: timeLog.user
-        }))
-      }
+        creator: task.creator,
+        assignees: task.assignees.map(a => a.user),
+        comments: task.comments
+      }))
     } catch (error) {
-      console.error('Error updating task:', error)
-      throw new Error('Failed to update task')
+      console.error('Error in TaskService.getUserAssignedTasks:', error)
+      throw error
     }
   }
 
-  static async deleteTask(id: string, userId: string) {
-    try {
-      // Check if user has access to the task
-      const existingTask = await prisma.task.findFirst({
-        where: {
-          id: id,
-          project: {
-            OR: [
-              { userId: userId },
-              { createdBy: userId }
-            ]
-          }
-        },
-        include: {
-          project: true
-        }
-      })
-
-      if (!existingTask) {
-        throw new Error('Task not found or access denied')
-      }
-
-      // Delete related data first
-      await prisma.comment.deleteMany({
-        where: {
-          taskId: id
-        }
-      })
-
-      await prisma.timeLog.deleteMany({
-        where: {
-          taskId: id
-        }
-      })
-
-      await prisma.subTask.deleteMany({
-        where: {
-          taskId: id
-        }
-      })
-
-      await prisma.task.delete({
-        where: { id: id }
-      })
-
-      // Create activity log
-      await prisma.activity.create({
-        data: {
-          userId: userId,
-          type: 'task_deleted',
-          title: 'Task Deleted',
-          message: `Task "${existingTask.label || 'Untitled'}" was deleted`,
-          projectId: existingTask.projectId
-        }
-      })
-
-      return { success: true }
-    } catch (error) {
-      console.error('Error deleting task:', error)
-      throw new Error('Failed to delete task')
+  // Determine status category based on status
+  private static determineStatusCategory(status: Status): StatusCategory {
+    const categoryMap = {
+      TODO: StatusCategory.BACKLOG,
+      IN_PROGRESS: StatusCategory.IN_PROGRESS,
+      DONE: StatusCategory.COMPLETED
     }
+    return categoryMap[status]
   }
 
-  static async updateTaskStatus(id: string, status: TaskStatus, userId: string) {
-    try {
-      // Check if user has access to the task
-      const existingTask = await prisma.task.findFirst({
-        where: {
-          id: id,
-          project: {
-            OR: [
-              { userId: userId },
-              { createdBy: userId }
-            ]
-          }
-        },
-        include: {
-          project: true
-        }
-      })
-
-      if (!existingTask) {
-        throw new Error('Task not found or access denied')
-      }
-
-      const task = await prisma.task.update({
-        where: { id: id },
-        data: {
-          status: status,
-          completedAt: status === 'DONE' ? new Date() : null
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          project: {
-            select: {
-              id: true,
-              title: true,
-              description: true
-            }
-          }
-        }
-      })
-
-      // Create activity log
-      await prisma.activity.create({
-        data: {
-          userId: userId,
-          type: 'task_status_updated',
-          title: 'Task Status Updated',
-          message: `Task "${task.label || 'Untitled'}" status changed to ${status}`,
-          taskId: task.id,
-          projectId: task.projectId
-        }
-      })
-
-      return {
-        id: task.id,
-        projectId: task.projectId,
-        userId: task.userId,
-        createdBy: task.createdBy,
-        completedAt: task.completedAt,
-        assignedTo: task.assignedTo,
-        status: task.status,
-        label: task.label,
-        dueDate: task.dueDate,
-        endDate: task.endDate,
-        attachments: task.attachments,
-        createdAt: task.createdAt,
-        assignee: task.user,
-        project: task.project
-      }
-    } catch (error) {
-      console.error('Error updating task status:', error)
-      throw new Error('Failed to update task status')
+  // Existing helper method to map status
+  private static mapStatusToDb(status: string): Status {
+    switch (status.toLowerCase()) {
+      case 'todo': return 'TODO'
+      case 'in-progress': return 'IN_PROGRESS'
+      case 'done': return 'DONE'
+      default: return 'TODO'
     }
   }
 }

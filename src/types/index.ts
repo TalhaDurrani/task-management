@@ -23,9 +23,40 @@ export interface StatusManagementService {
   getDefaultStatuses(): TaskStatusObject[];
 }
 
-export type TaskStatusString = "todo" | "in_progress" | "done"
+export type TaskStatusString = "TODO" | "IN_PROGRESS" | "DONE"
 
 export type TaskStatus = TaskStatusObject | TaskStatusString
+
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+
+export type CustomFieldType = "TEXT" | "NUMBER" | "DROPDOWN" | "BOOLEAN"
+
+export interface TimeLog {
+  id: string
+  taskId: string
+  userId: string
+  hoursSpent: number
+  description?: string
+  logDate: Date
+  createdAt: Date
+  task?: Task
+  user?: User
+}
+
+export interface Timer {
+  id: string
+  taskId: string
+  userId: string
+  description?: string
+  startedAt: Date
+  endedAt?: Date
+  pausedAt?: Date
+  elapsedTime?: number
+  isActive: boolean
+  createdAt: Date
+  task?: Task
+  user?: User
+}
 
 export function processTaskStatus(status: TaskStatus): {
   name: string;
@@ -43,23 +74,23 @@ export function processTaskStatus(status: TaskStatus): {
 
   // Handle string-based statuses
   switch(status) {
-    case "todo": 
+    case "TODO": 
       return { 
         name: "To Do", 
         category: "not-started",
-        color: "#FF6B6B"
+        color: "#6B7280"
       };
-    case "in_progress": 
+    case "IN_PROGRESS": 
       return { 
         name: "In Progress", 
         category: "in-progress",
-        color: "#4ECDC4"
+        color: "#3B82F6"
       };
-    case "done": 
+    case "DONE": 
       return { 
         name: "Done", 
         category: "completed",
-        color: "#45B7D1"
+        color: "#10B981"
       };
     default: 
       return { 
@@ -89,7 +120,6 @@ export type TaskWithSubtasks = {
   parentTaskId?: string;
 }
 
-export type TaskPriority = "low" | "medium" | "high" | "critical"
 
 export interface User {
   id: string
@@ -118,21 +148,91 @@ export interface Project {
 export interface Task {
   id: string
   projectId: string
-  userId: string | null
-  createdBy: string | null
-  completedAt: Date | null
-  assignedTo: string | null
+  title: string
+  description?: string
+  dueDate?: Date
+  priority: TaskPriority
   status: TaskStatus
-  label: string | null
-  dueDate: Date | null
-  endDate: Date | null
-  attachments: string | null
+  createdBy: string
+  completedAt?: Date
+  createdAt: Date
   project: Project
-  assignee: User | null
-  logs: TaskLog[]
+  creator: User
+  assignees: User[]
+  subTasks: SubTask[]
   comments: Comment[]
+  attachments: Attachment[]
+  customFields: TaskCustomField[]
+  timeLogs: TimeLog[]
+  timers: Timer[]
+}
+
+export interface SubTask {
+  id?: string
+  title: string
+  description?: string
+  assigneeId?: string
+  // Removed status field
+}
+
+export interface Attachment {
+  id: string
+  taskId: string
+  fileName: string
+  filePath: string
+  fileSize: number
+  mimeType: string
+  uploadedBy: string
+  uploadedAt: Date
+  task?: Task
+  user?: User
+}
+
+export interface CustomField {
+  id: string
+  name: string
+  type: CustomFieldType
+  options?: string
+  isRequired: boolean
+  workspaceId?: string
+  projectId?: string
+  createdAt: Date
+  workspace?: Workspace
+  project?: Project
+  taskValues: TaskCustomField[]
+}
+
+export interface TaskCustomField {
+  id: string
+  taskId: string
+  customFieldId: string
+  value?: string
+  task?: Task
+  customField?: CustomField
+}
+
+export interface Workspace {
+  id: string
+  name: string
+  description?: string
+  organizationId: string
   createdAt: Date
   updatedAt: Date
+  organization?: Organization
+  users: User[]
+  projects: Project[]
+  customFields: CustomField[]
+}
+
+export interface Organization {
+  id: string
+  name: string
+  description?: string
+  createdAt: Date
+  updatedAt: Date
+  users: User[]
+  projects: Project[]
+  workspaces: Workspace[]
 }
 
 export interface TaskLog {
@@ -165,12 +265,28 @@ export interface CreateTaskData {
   projectId: string
   title: string
   description?: string
-  assignedTo?: string
-  status?: TaskStatus
-  label?: string
   dueDate?: Date
-  endDate?: Date
-  attachments?: string
+  priority?: TaskPriority
+  status?: TaskStatus
+  customStatus?: string
+  statusCategory?: StatusCategory
+  type?: string
+  customType?: string
+  assignees?: string[]
+  subTasks?: Array<{
+    title: string
+    description?: string
+  }>
+  customFields?: Array<{
+    fieldId: string
+    value?: string
+  }>
+  attachments?: Array<{
+    fileName: string
+    filePath: string
+    fileSize: number
+    mimeType: string
+  }>
 }
 
 export interface UpdateTaskData extends Partial<CreateTaskData> {

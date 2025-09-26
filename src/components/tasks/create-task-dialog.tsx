@@ -1,55 +1,109 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import * as z from "zod"
+import { z } from "zod"
 import { format } from "date-fns"
-import { CalendarIcon, Plus } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { CalendarIcon, Plus, X, Upload, User } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { TaskWithSubtasks, TaskStatus } from "@/types"
 
+// Form schema with all required features
 const formSchema = z.object({
-  title: z.string().min(1, "Task title is required").max(200, "Task title is too long"),
+  title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  priority: z.enum(["low", "medium", "high", "critical"]),
+  type: z.string().min(1, "Type is required"),
+  customType: z.string().optional(),
   projectId: z.string().min(1, "Project is required"),
-  assigneeId: z.string().optional(),
-  startDate: z.date().optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+  status: z.string().min(1, "Status is required"),
+  customStatus: z.string().optional(),
   dueDate: z.date().optional(),
-  estimatedHours: z.number().min(0).optional(),
-  storyPoints: z.number().min(0).optional(),
-  issueType: z.enum(["story", "bug", "task", "epic"]).optional(),
-  status: z.object({
-    id: z.string(),
-    name: z.string(),
-    color: z.string(),
-    category: z.enum(["not-started", "in-progress", "completed"]),
-    order: z.number()
-  }).optional(),
-  subtasks: z.array(z.object({
-    title: z.string().min(1, "Subtask title is required"),
-    description: z.string().optional()
-  })).optional()
+  assignees: z.array(z.string()).optional(),
+  subTasks: z.array(
+    z.object({
+      title: z.string().min(1, "Subtask title is required"),
+      description: z.string().optional(),
+      assigneeId: z.string().optional(),
+    })
+  ).optional(),
+  attachments: z.array(
+    z.object({
+      fileName: z.string(),
+      filePath: z.string(),
+      fileSize: z.number(),
+      mimeType: z.string(),
+    })
+  ).optional(),
 })
 
 type FormData = z.infer<typeof formSchema>
+
+interface Project {
+  id: string
+  title: string
+}
+
+interface User {
+  id: string
+  name: string
+  email: string
+}
+
+interface TaskType {
+  name: string
+  color?: string
+}
+
+interface TaskStatus {
+  name: string
+  color?: string
+  category?: string
+}
 
 interface CreateTaskDialogProps {
   children?: React.ReactNode
@@ -59,145 +113,219 @@ interface CreateTaskDialogProps {
 
 export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateTaskDialogProps) {
   const [open, setOpen] = useState(false)
-  const [selectedLabels, setSelectedLabels] = useState<string[]>([])
-  const [newLabel, setNewLabel] = useState("")
-  const [subtasks, setSubtasks] = useState<{title: string, description?: string}[]>([])
-  const [projects, setProjects] = useState([])
-  const [users, setUsers] = useState([])
-  const [selectedStatus, setSelectedStatus] = useState<TaskStatus>({
-    id: "1",
-    name: "To Do",
-    color: "#6B7280",
-    category: "not-started",
-    order: 1
-  })
-
-  // Load dynamic data when dialog opens
-  useEffect(() => {
-    if (open) {
-      const loadData = async () => {
-        try {
-          // Load projects
-          const projectsResponse = await fetch('/api/projects')
-          if (projectsResponse.ok) {
-            const projectsData = await projectsResponse.json()
-            setProjects(projectsData)
-          }
-          
-          // Load users
-          const usersResponse = await fetch('/api/users')
-          if (usersResponse.ok) {
-            const usersData = await usersResponse.json()
-            setUsers(usersData)
-          }
-        } catch (error) {
-          console.error('Error loading data for task creation:', error)
-        }
-      }
-      
-      loadData()
-    }
-  }, [open])
+  const [isLoading, setIsLoading] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [types, setTypes] = useState<TaskType[]>([])
+  const [statuses, setStatuses] = useState<TaskStatus[]>([])
+  const [assigneeOpen, setAssigneeOpen] = useState(false)
+  const [dateOpen, setDateOpen] = useState(false)
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: "",
       description: "",
-      priority: "medium",
+      type: "",
       projectId: projectId || "",
-      assigneeId: "unassigned",
-      startDate: undefined,
+      priority: "MEDIUM" as const,
+      status: "",
       dueDate: undefined,
-      estimatedHours: 0,
-      storyPoints: undefined,
-      issueType: "task",
-      status: selectedStatus,
-      subtasks: []
+      assignees: [],
+      subTasks: [],
+      attachments: [],
     },
   })
 
-  const onSubmit = async (data: FormData) => {
+  const { fields: subTaskFields, append: appendSubTask, remove: removeSubTask } = useFieldArray({
+    control: form.control,
+    name: "subTasks"
+  })
+
+  // Load all data when dialog opens
+  useEffect(() => {
+    if (open) {
+      loadProjects()
+      loadUsers()
+      loadTypesAndStatuses()
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (projectId) {
+      form.setValue("projectId", projectId)
+    }
+  }, [projectId, form])
+
+  const loadProjects = async () => {
     try {
-      const taskData = {
-        title: data.title,
-        description: data.description || null,
-        projectId: data.projectId,
-        assignedTo: data.assigneeId === "unassigned" ? null : data.assigneeId,
-        status: "PENDING", // Use the correct enum value
-        label: selectedLabels.join(", ") || null,
-        dueDate: data.dueDate ? data.dueDate.toISOString() : null,
-        endDate: data.startDate ? data.startDate.toISOString() : null,
-        attachments: null
+      const response = await fetch("/api/projects")
+      if (response.ok) {
+        const data = await response.json()
+        setProjects(Array.isArray(data) ? data : (data.projects || []))
       }
-      
-      console.log("Creating task:", taskData)
-      
-      // Make actual API call
-      const response = await fetch('/api/tasks', {
-        method: 'POST',
+    } catch (error) {
+      console.error("Failed to load projects:", error)
+    }
+  }
+
+  const loadUsers = async () => {
+    try {
+      const response = await fetch("/api/users/assignable")
+      if (response.ok) {
+        const data = await response.json()
+        setUsers(Array.isArray(data) ? data : (data.users || []))
+      }
+    } catch (error) {
+      console.error("Failed to load users:", error)
+    }
+  }
+
+  const loadTypesAndStatuses = async () => {
+    try {
+      // Get current user to fetch workspace
+      const userResponse = await fetch("/api/auth/me")
+      let workspaceId = null
+      if (userResponse.ok) {
+        const userData = await userResponse.json()
+        workspaceId = userData.workspaceId
+      }
+
+      // Load types
+      const typesUrl = workspaceId ? `/api/tasks/type?workspaceId=${workspaceId}` : "/api/tasks/type"
+      const typesResponse = await fetch(typesUrl)
+      if (typesResponse.ok) {
+        const typesData = await typesResponse.json()
+        const allTypes = [...(typesData.default || []), ...(typesData.custom || [])]
+        setTypes(allTypes)
+      }
+
+      // Load statuses
+      const statusesUrl = workspaceId ? `/api/tasks/status?workspaceId=${workspaceId}` : "/api/tasks/status"
+      const statusesResponse = await fetch(statusesUrl)
+      if (statusesResponse.ok) {
+        const statusesData = await statusesResponse.json()
+        setStatuses(statusesData)
+      }
+    } catch (error) {
+      console.error("Failed to load types and statuses:", error)
+    }
+  }
+
+  const createCustomType = async (typeName: string) => {
+    try {
+      const response = await fetch("/api/tasks/type", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(taskData)
+        body: JSON.stringify({ name: typeName })
       })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create task')
+
+      if (response.ok) {
+        const newType = await response.json()
+        setTypes(prev => [...prev, newType])
+        form.setValue('type', newType.name)
+        return true
       }
-      
-      const createdTask = await response.json()
-      console.log("Task created successfully:", createdTask)
-      
-      // Reset form
-      form.reset()
-      setSelectedLabels([])
-      setSubtasks([])
-      setSelectedStatus({
-        id: "1",
-        name: "To Do",
-        color: "#6B7280",
-        category: "not-started",
-        order: 1
+    } catch (error) {
+      console.error("Failed to create custom type:", error)
+    }
+    return false
+  }
+
+  const createCustomStatus = async (statusName: string, category: string = 'BACKLOG') => {
+    try {
+      const response = await fetch("/api/tasks/status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+          name: statusName,
+          category: category
+        })
       })
-      setOpen(false)
-      
-      onTaskCreated?.()
-      
-      alert("Task created successfully!")
+
+      if (response.ok) {
+        const newStatus = await response.json()
+        setStatuses(prev => [...prev, newStatus])
+        form.setValue('status', newStatus.name)
+        return true
+      }
+    } catch (error) {
+      console.error("Failed to create custom status:", error)
+    }
+    return false
+  }
+
+  const handleFileUpload = (files: FileList) => {
+    const fileArray = Array.from(files).map(file => ({
+      fileName: file.name,
+      filePath: URL.createObjectURL(file),
+      fileSize: file.size,
+      mimeType: file.type,
+    }))
+    
+    const currentAttachments = form.getValues("attachments") || []
+    form.setValue("attachments", [...currentAttachments, ...fileArray])
+  }
+
+  const removeAttachment = (index: number) => {
+    const currentAttachments = form.getValues("attachments") || []
+    const newAttachments = currentAttachments.filter((_, i) => i !== index)
+    form.setValue("attachments", newAttachments)
+  }
+
+  const onSubmit = async (data: FormData) => {
+    setIsLoading(true)
+    try {
+      // Handle custom type creation if needed
+      if (data.type === 'CUSTOM' && data.customType) {
+        const created = await createCustomType(data.customType)
+        if (!created) {
+          alert('Failed to create custom type')
+          setIsLoading(false)
+          return
+        }
+        data.type = data.customType
+      }
+
+      // Handle custom status creation if needed
+      if (data.status === 'CUSTOM' && data.customStatus) {
+        const created = await createCustomStatus(data.customStatus)
+        if (!created) {
+          alert('Failed to create custom status')
+          setIsLoading(false)
+          return
+        }
+        data.status = data.customStatus
+      }
+
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      })
+
+      if (response.ok) {
+        setOpen(false)
+        form.reset()
+        onTaskCreated?.()
+      } else {
+        const error = await response.json()
+        console.error("Failed to create task:", error)
+        alert(error.message || "Failed to create task")
+      }
     } catch (error) {
       console.error("Error creating task:", error)
-      alert(`Failed to create task: ${error.message}`)
+      alert("An unexpected error occurred")
+    } finally {
+      setIsLoading(false)
     }
   }
-
-  const addLabel = () => {
-    if (newLabel.trim() && !selectedLabels.includes(newLabel.trim())) {
-      setSelectedLabels([...selectedLabels, newLabel.trim()])
-      setNewLabel("")
-    }
-  }
-
-  const removeLabel = (label: string) => {
-    setSelectedLabels(selectedLabels.filter(l => l !== label))
-  }
-
-  const addSubtask = () => {
-    const newSubtask = { 
-      title: "", 
-      description: "" 
-    }
-    setSubtasks([...subtasks, newSubtask])
-  }
-
-  const removeSubtask = (index: number) => {
-    const updatedSubtasks = [...subtasks]
-    updatedSubtasks.splice(index, 1)
-    setSubtasks(updatedSubtasks)
-  }
-
-  const commonLabels = ["bug", "feature", "urgent", "review", "design", "backend", "frontend"]
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -209,369 +337,487 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create New Task</DialogTitle>
+          <DialogTitle>Create Task</DialogTitle>
           <DialogDescription>
-            Add a new task to your project. Fill in the details below.
+            Add a new task to your project with custom types, statuses, subtasks, and attachments.
           </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* Task Title */}
-          <div className="space-y-2">
-            <Label htmlFor="title">Task Title *</Label>
-            <Input
-              id="title"
-              placeholder="Enter task title..."
-              {...form.register("title")}
-              className={cn(form.formState.errors.title && "border-destructive")}
-            />
-            {form.formState.errors.title && (
-              <p className="text-sm text-destructive">{form.formState.errors.title.message}</p>
-            )}
-          </div>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Title</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Task title" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-          {/* Description */}
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              placeholder="Describe the task..."
-              rows={3}
-              {...form.register("description")}
-            />
-          </div>
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Task description" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Project */}
-            <div className="space-y-2">
-              <Label htmlFor="project">Project *</Label>
-              <Select
-                value={form.watch("projectId")}
-                onValueChange={(value) => form.setValue("projectId", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.title || project.name}
-                    </SelectItem>
+            {/* Project and Priority */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="projectId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Project</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Priority</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select priority" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="LOW">Low</SelectItem>
+                        <SelectItem value="MEDIUM">Medium</SelectItem>
+                        <SelectItem value="HIGH">High</SelectItem>
+                        <SelectItem value="CRITICAL">Critical</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Type and Status */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Task Type</FormLabel>
+                    <div className="space-y-2">
+                      <Select 
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          if (value !== 'CUSTOM') {
+                            form.setValue('customType', undefined)
+                          }
+                        }} 
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {types.map((type) => (
+                            <SelectItem key={type.name} value={type.name}>
+                              {type.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="CUSTOM">
+                            <div className="flex items-center">
+                              <Plus className="h-4 w-4 mr-2" />
+                              Create Custom Type
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      
+                      {field.value === 'CUSTOM' && (
+                        <FormField
+                          control={form.control}
+                          name="customType"
+                          render={({ field: customTypeField }) => (
+                            <FormItem>
+                              <FormControl>
+                                <Input 
+                                  placeholder="Enter custom type name" 
+                                  {...customTypeField}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <div className="space-y-2">
+                      <Select 
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          if (value !== 'CUSTOM') {
+                            form.setValue('customStatus', undefined)
+                          }
+                        }} 
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {statuses.map((status) => (
+                            <SelectItem key={status.name} value={status.name}>
+                              <div className="flex items-center space-x-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full" 
+                                  style={{ backgroundColor: status.color || '#gray' }}
+                                ></div>
+                                <span>{status.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="CUSTOM">
+                            <div className="flex items-center">
+                              <Plus className="h-4 w-4 mr-2" />
+                              Create Custom Status
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      
+                      {field.value === 'CUSTOM' && (
+                        <FormField
+                          control={form.control}
+                          name="customStatus"
+                          render={({ field: customStatusField }) => (
+                            <FormItem>
+                              <FormControl>
+                                <Input 
+                                  placeholder="Enter custom status name" 
+                                  {...customStatusField}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Due Date */}
+            <FormField
+              control={form.control}
+              name="dueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Due Date</FormLabel>
+                  <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          "w-full pl-3 text-left font-normal",
+                          !field.value && "text-muted-foreground"
+                        )}
+                        onClick={() => setDateOpen(!dateOpen)}
+                      >
+                        {field.value ? (
+                          format(field.value, "PPP")
+                        ) : (
+                          <span>Pick a date</span>
+                        )}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={(date) => {
+                          field.onChange(date)
+                          setDateOpen(false)
+                        }}
+                        disabled={(date) => date < new Date("1900-01-01")}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Assignees */}
+            <FormField
+              control={form.control}
+              name="assignees"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Assignees</FormLabel>
+                  <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        className={cn(
+                          "w-full justify-between",
+                          !field.value?.length && "text-muted-foreground"
+                        )}
+                        onClick={() => setAssigneeOpen(!assigneeOpen)}
+                      >
+                        {field.value?.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {field.value.map((userId) => {
+                              const user = users.find(u => u.id === userId)
+                              return user ? (
+                                <Badge key={userId} variant="secondary" className="text-xs">
+                                  {user.name}
+                                </Badge>
+                              ) : null
+                            })}
+                          </div>
+                        ) : (
+                          "Select assignees..."
+                        )}
+                        <User className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0">
+                      <Command>
+                        <CommandInput placeholder="Search users..." />
+                        <CommandEmpty>No users found.</CommandEmpty>
+                        <CommandGroup>
+                          {users.map((user) => (
+                            <CommandItem
+                              key={user.id}
+                              value={user.id}
+                              onSelect={() => {
+                                const currentAssignees = field.value || []
+                                const isSelected = currentAssignees.includes(user.id)
+                                if (isSelected) {
+                                  field.onChange(currentAssignees.filter(id => id !== user.id))
+                                } else {
+                                  field.onChange([...currentAssignees, user.id])
+                                }
+                              }}
+                            >
+                              <Checkbox
+                                checked={field.value?.includes(user.id) || false}
+                                className="mr-2"
+                              />
+                              {user.name} ({user.email})
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Subtasks Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <FormLabel>Subtasks</FormLabel>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => appendSubTask({ title: "", description: "" })}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Subtask
+                </Button>
+              </div>
+              
+              {subTaskFields.map((field, index) => (
+                <div key={field.id} className="flex gap-2 items-start p-4 border rounded-lg">
+                  <div className="flex-1 space-y-2">
+                    <FormField
+                      control={form.control}
+                      name={`subTasks.${index}.title`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input placeholder="Subtask title" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`subTasks.${index}.description`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Textarea placeholder="Subtask description (optional)" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`subTasks.${index}.assigneeId`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Assign to (optional)" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {users.map((user) => (
+                                <SelectItem key={user.id} value={user.id}>
+                                  {user.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => removeSubTask(index)}
+                    className="mt-2"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            {/* File Attachments Section */}
+            <div className="space-y-4">
+              <FormLabel>Attachments</FormLabel>
+              
+              {/* File Upload Area */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <div className="space-y-2">
+                  <Label htmlFor="file-upload" className="cursor-pointer">
+                    <span className="text-sm font-medium text-gray-900">
+                      Drop files here or click to upload
+                    </span>
+                    <input
+                      id="file-upload"
+                      name="file-upload"
+                      type="file"
+                      className="sr-only"
+                      multiple
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          handleFileUpload(e.target.files)
+                        }
+                      }}
+                    />
+                  </Label>
+                  <p className="text-xs text-gray-500">
+                    PNG, JPG, PDF, DOC up to 10MB each
+                  </p>
+                </div>
+              </div>
+
+              {/* Uploaded Files List */}
+              {form.watch("attachments") && form.watch("attachments")!.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Uploaded Files:</p>
+                  {form.watch("attachments")!.map((attachment, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{attachment.fileName}</p>
+                        <p className="text-xs text-gray-500">
+                          {(attachment.fileSize / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeAttachment(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-              {form.formState.errors.projectId && (
-                <p className="text-sm text-destructive">{form.formState.errors.projectId.message}</p>
+                </div>
               )}
             </div>
 
-            {/* Priority */}
-            <div className="space-y-2">
-              <Label htmlFor="priority">Priority</Label>
-              <Select
-                value={form.watch("priority")}
-                onValueChange={(value: "low" | "medium" | "high" | "critical") => 
-                  form.setValue("priority", value)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Assignee */}
-            <div className="space-y-2">
-              <Label htmlFor="assignee">Assignee</Label>
-              <Select
-                value={form.watch("assigneeId")}
-                onValueChange={(value) => form.setValue("assigneeId", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select assignee" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Estimated Hours */}
-            <div className="space-y-2">
-              <Label htmlFor="estimatedHours">Estimated Hours</Label>
-              <Input
-                id="estimatedHours"
-                type="number"
-                min="0"
-                step="0.5"
-                placeholder="0"
-                {...form.register("estimatedHours", { valueAsNumber: true })}
-              />
-            </div>
-
-            {/* Story Points */}
-            <div className="space-y-2">
-              <Label htmlFor="storyPoints">Story Points</Label>
-              <Input
-                id="storyPoints"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="0"
-                {...form.register("storyPoints", { valueAsNumber: true })}
-              />
-            </div>
-
-            {/* Issue Type */}
-            <div className="space-y-2">
-              <Label htmlFor="issueType">Issue Type</Label>
-              <Select
-                value={form.watch("issueType")}
-                onValueChange={(value) => form.setValue("issueType", value as "story" | "bug" | "task" | "epic")}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select issue type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="story">📖 Story</SelectItem>
-                  <SelectItem value="bug">🐛 Bug</SelectItem>
-                  <SelectItem value="task">📋 Task</SelectItem>
-                  <SelectItem value="epic">🎯 Epic</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Start Date */}
-          <div className="space-y-2">
-            <Label>Start Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !form.watch("startDate") && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {form.watch("startDate") ? (
-                    format(form.watch("startDate")!, "PPP")
-                  ) : (
-                    <span>Pick start date</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={form.watch("startDate")}
-                  onSelect={(date) => form.setValue("startDate", date)}
-                  initialFocus
-                />
-                {form.watch("startDate") && (
-                  <div className="p-3 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => form.setValue("startDate", undefined)}
-                    >
-                      Clear Start Date
-                    </Button>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {/* Due Date */}
-          <div className="space-y-2">
-            <Label>Due Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !form.watch("dueDate") && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {form.watch("dueDate") ? (
-                    format(form.watch("dueDate")!, "PPP")
-                  ) : (
-                    <span>Pick a date</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={form.watch("dueDate")}
-                  onSelect={(date) => form.setValue("dueDate", date)}
-                  initialFocus
-                />
-                {form.watch("dueDate") && (
-                  <div className="p-3 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => form.setValue("dueDate", undefined)}
-                    >
-                      Clear Date
-                    </Button>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {/* Labels */}
-          <div className="space-y-2">
-            <Label>Labels</Label>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {selectedLabels.map((label) => (
-                <Badge key={label} variant="secondary" className="flex items-center gap-1">
-                  {label}
-                  <button
-                    type="button"
-                    onClick={() => removeLabel(label)}
-                    className="ml-1 hover:text-destructive"
-                  >
-                    ×
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            
-            <div className="flex gap-2">
-              <Input
-                placeholder="Add label..."
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addLabel())}
-              />
-              <Button type="button" variant="outline" onClick={addLabel}>
-                Add
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
               </Button>
-            </div>
-            
-            <div className="flex flex-wrap gap-1">
-              {commonLabels
-                .filter(label => !selectedLabels.includes(label))
-                .map((label) => (
-                  <Button
-                    key={label}
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedLabels([...selectedLabels, label])}
-                    className="h-6 px-2 text-xs"
-                  >
-                    {label}
-                  </Button>
-                ))}
-            </div>
-          </div>
-
-          {/* Status Selection with Color */}
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { id: "1", name: "To Do", color: "#6B7280", category: "not-started", order: 1 },
-                { id: "2", name: "In Progress", color: "#3B82F6", category: "in-progress", order: 2 },
-                { id: "3", name: "Done", color: "#10B981", category: "completed", order: 3 }
-              ].map((status) => (
-                <Button
-                  key={status.id}
-                  type="button"
-                  variant={selectedStatus.id === status.id ? "default" : "outline"}
-                  style={{ 
-                    backgroundColor: selectedStatus.id === status.id ? status.color : 'transparent',
-                    color: selectedStatus.id === status.id ? 'white' : status.color
-                  }}
-                  onClick={() => setSelectedStatus(status)}
-                >
-                  {status.name}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {/* Subtasks Section */}
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <Label>Subtasks</Label>
-              <Button 
-                type="button" 
-                variant="outline" 
-                size="sm" 
-                onClick={addSubtask}
-              >
-                Add Subtask
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? "Creating..." : "Create Task"}
               </Button>
-            </div>
-            
-            {subtasks.map((subtask, index) => (
-              <div key={index} className="flex space-x-2">
-                <Input
-                  placeholder="Subtask title"
-                  value={subtask.title}
-                  onChange={(e) => {
-                    const updatedSubtasks = [...subtasks]
-                    updatedSubtasks[index].title = e.target.value
-                    setSubtasks(updatedSubtasks)
-                  }}
-                />
-                <Input
-                  placeholder="Description (optional)"
-                  value={subtask.description}
-                  onChange={(e) => {
-                    const updatedSubtasks = [...subtasks]
-                    updatedSubtasks[index].description = e.target.value
-                    setSubtasks(updatedSubtasks)
-                  }}
-                />
-                <Button 
-                  type="button" 
-                  variant="destructive" 
-                  size="icon"
-                  onClick={() => removeSubtask(index)}
-                >
-                  ×
-                </Button>
-              </div>
-            ))}
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end space-x-2 pt-4">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? "Creating..." : "Create Task"}
-            </Button>
-          </div>
-        </form>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

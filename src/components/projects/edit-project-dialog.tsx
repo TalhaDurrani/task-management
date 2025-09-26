@@ -24,8 +24,9 @@ type FormData = z.infer<typeof formSchema>
 interface Project {
   id: string
   name: string
+  title: string
   description: string | null
-  members: Array<{
+  members?: Array<{
     user: {
       id: string
     }
@@ -46,17 +47,17 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: project.name,
+      name: project.title || project.name,
       description: project.description || "",
-      memberIds: project.members.map((m) => m.user.id),
+      memberIds: project.members?.map((m) => m.user.id) || [],
     },
   })
 
   useEffect(() => {
     form.reset({
-      name: project.name,
+      name: project.title || project.name,
       description: project.description || "",
-      memberIds: project.members.map((m) => m.user.id),
+      memberIds: project.members?.map((m) => m.user.id) || [],
     })
   }, [project, form])
 

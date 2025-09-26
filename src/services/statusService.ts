@@ -1,95 +1,217 @@
-import { v4 as uuidv4 } from 'uuid'
-import { TaskStatusObject, CreateStatusDTO, StatusManagementService } from '@/types'
+import { prisma } from '@/lib/db'
+import { z } from 'zod'
+import { Status, StatusCategory } from '@prisma/client'
 
-// Predefined color palette
-const STATUS_COLORS = [
-  '#FF6B6B', // Red
-  '#4ECDC4', // Teal
-  '#45B7D1', // Blue
-  '#FFA07A', // Light Salmon
-  '#98D8C8', // Mint
-  '#F3B562', // Warm Yellow
-  '#A569BD', // Purple
-]
+// Robust input validation
+const CustomStatusSchema = z.object({
+  name: z.string()
+    .min(2, "Status name must be at least 2 characters")
+    .max(50, "Status name cannot exceed 50 characters")
+    .regex(/^[a-zA-Z0-9\s-]+$/, "Status name can only contain letters, numbers, spaces, and hyphens"),
+  category: z.enum(['BACKLOG', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD']),
+  color: z.string().optional()
+})
 
-export class MockStatusService implements StatusManagementService {
-  private statuses: TaskStatusObject[] = []
-
-  constructor() {
-    this.statuses = this.getDefaultStatuses()
-  }
-
-  getDefaultStatuses(): TaskStatusObject[] {
-    return [
-      {
-        id: 'status-todo',
-        name: 'To Do',
-        color: '#FF6B6B',
-        category: 'not-started',
-        order: 1
-      },
-      {
-        id: 'status-in-progress',
-        name: 'In Progress',
-        color: '#4ECDC4',
-        category: 'in-progress',
-        order: 2
-      },
-      {
-        id: 'status-done',
-        name: 'Done',
-        color: '#45B7D1',
-        category: 'completed',
-        order: 3
-      }
-    ]
-  }
-
-  async createStatus(statusData: CreateStatusDTO): Promise<TaskStatusObject> {
-    const newStatus: TaskStatusObject = {
-      id: statusData.id || uuidv4(),
-      name: statusData.name,
-      color: statusData.color || this.getUniqueColor(),
-      category: statusData.category,
-      order: this.statuses.length + 1,
-      projectId: statusData.projectId
-    }
-
-    this.statuses.push(newStatus)
-    return newStatus
-  }
-
-  async updateStatus(id: string, updates: Partial<CreateStatusDTO>): Promise<TaskStatusObject> {
-    const statusIndex = this.statuses.findIndex(s => s.id === id)
-    if (statusIndex === -1) {
-      throw new Error('Status not found')
-    }
-
-    this.statuses[statusIndex] = {
-      ...this.statuses[statusIndex],
-      ...updates
-    }
-
-    return this.statuses[statusIndex]
-  }
-
-  async deleteStatus(id: string): Promise<void> {
-    this.statuses = this.statuses.filter(s => s.id !== id)
-  }
-
-  async getStatusesByProject(projectId: string): Promise<TaskStatusObject[]> {
-    return this.statuses.filter(s => s.projectId === projectId)
-  }
-
-  private getUniqueColor(): string {
-    const usedColors = new Set(this.statuses.map(s => s.color))
-    const availableColors = STATUS_COLORS.filter(color => !usedColors.has(color))
-    
-    return availableColors.length > 0 
-      ? availableColors[0] 
-      : STATUS_COLORS[Math.floor(Math.random() * STATUS_COLORS.length)]
-  }
+export interface CustomStatusData {
+  name: string
+  category: StatusCategory
+  color?: string
 }
 
-export const statusService = new MockStatusService()
+export class StatusService {
+  // Create a new custom status with comprehensive validation
+  static async createCustomStatus(
+    workspaceId: string, 
+    statusData: CustomStatusData
+  ) {
+    try {
+      // Validate input
+      const validatedData = CustomStatusSchema.parse(statusData)
+
+      // Check for existing status (case-insensitive) in the CustomStatus table
+      const existingStatus = await prisma.customStatus.findFirst({
+        where: { 
+          workspaceId: workspaceId,
+          name: { 
+            mode: 'insensitive', 
+            equals: validatedData.name.trim() 
+          }
+        }
+      })
+
+      if (existingStatus) {
+        throw new Error('Status already exists in this workspace')
+      }
+
+      // Create the custom status in the CustomStatus table
+      const customStatus = await prisma.customStatus.create({
+        data: {
+          name: validatedData.name.trim().toUpperCase(),
+          color: validatedData.color || '#34D399',
+          category: validatedData.category,
+          workspaceId: workspaceId
+        }
+      })
+
+      // Log status creation
+      await this.logStatusCreation(workspaceId, validatedData)
+
+      return {
+        name: customStatus.name,
+        category: customStatus.category,
+        color: customStatus.color
+      }
+    } catch (error) {
+      console.error('Status creation error:', error)
+      throw error
+    }
+  }
+
+  // Fetch workspace statuses with advanced filtering
+  static async getWorkspaceStatuses(
+    workspaceId: string, 
+    options?: {
+      category?: StatusCategory
+      includeDefault?: boolean
+    }
+  ) {
+    const defaultStatuses = [
+      { name: 'TODO', category: StatusCategory.BACKLOG },
+      { name: 'IN_PROGRESS', category: StatusCategory.IN_PROGRESS },
+      { name: 'DONE', category: StatusCategory.COMPLETED }
+    ]
+
+    const customStatuses = await prisma.task.findMany({
+      where: { 
+        project: { workspaceId },
+        ...(options?.category ? { statusCategory: options.category } : {})
+      },
+      select: { 
+        customStatus: true, 
+        statusCategory: true 
+      },
+      distinct: ['customStatus', 'statusCategory']
+    })
+
+    // Combine and filter statuses
+    const allStatuses = [
+      ...(options?.includeDefault !== false ? defaultStatuses : []),
+      ...customStatuses.map(s => ({
+        name: s.customStatus!, 
+        category: s.statusCategory
+      }))
+    ]
+
+    return allStatuses
+  }
+
+  // Logging for audit trail
+  private static async logStatusCreation(
+    workspaceId: string, 
+    statusData: CustomStatusData
+  ) {
+    // Since Activity doesn't have workspaceId, we'll just log the status creation
+    await prisma.activity.create({
+      data: {
+        type: 'STATUS_CREATED',
+        title: 'New Task Status Created',
+        message: `Custom status "${statusData.name}" created in workspace ${workspaceId}`,
+      }
+    })
+  }
+
+  // Update a custom status
+  static async updateCustomStatus(
+    statusId: string,
+    workspaceId: string,
+    updateData: {
+      name?: string
+      color?: string
+      category?: StatusCategory
+    }
+  ) {
+    try {
+      // Verify the status belongs to the workspace
+      const existingStatus = await prisma.customStatus.findFirst({
+        where: {
+          id: statusId,
+          workspaceId: workspaceId
+        }
+      })
+
+      if (!existingStatus) {
+        throw new Error('Custom status not found or access denied')
+      }
+
+      const updatedStatus = await prisma.customStatus.update({
+        where: { id: statusId },
+        data: updateData
+      })
+
+      return {
+        id: updatedStatus.id,
+        name: updatedStatus.name,
+        color: updatedStatus.color,
+        category: updatedStatus.category
+      }
+    } catch (error) {
+      console.error('Status update error:', error)
+      throw error
+    }
+  }
+
+  // Delete a custom status
+  static async deleteCustomStatus(statusId: string, workspaceId: string) {
+    try {
+      // Verify the status belongs to the workspace
+      const existingStatus = await prisma.customStatus.findFirst({
+        where: {
+          id: statusId,
+          workspaceId: workspaceId
+        }
+      })
+
+      if (!existingStatus) {
+        throw new Error('Custom status not found or access denied')
+      }
+
+      // Check if any tasks are using this custom status
+      const tasksUsingStatus = await prisma.task.count({
+        where: {
+          customStatus: existingStatus.name,
+          project: {
+            workspaceId: workspaceId
+          }
+        }
+      })
+
+      if (tasksUsingStatus > 0) {
+        throw new Error(`Cannot delete status "${existingStatus.name}" - it is being used by ${tasksUsingStatus} task(s)`)
+      }
+
+      await prisma.customStatus.delete({
+        where: { id: statusId }
+      })
+
+      return { success: true, message: `Custom status "${existingStatus.name}" deleted successfully` }
+    } catch (error) {
+      console.error('Status deletion error:', error)
+      throw error
+    }
+  }
+
+  // Advanced status transition validation
+  static validateStatusTransition(
+    currentStatus: Status, 
+    newStatus: Status
+  ): boolean {
+    const validTransitions = {
+      TODO: ['IN_PROGRESS'],
+      IN_PROGRESS: ['TODO', 'DONE'],
+      DONE: ['IN_PROGRESS']
+    }
+
+    return validTransitions[currentStatus]?.includes(newStatus) || false
+  }
+}
 

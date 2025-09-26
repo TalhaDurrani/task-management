@@ -14,7 +14,7 @@ import {
   Clock, 
   PlayCircle,
   PauseCircle,
-  SquareCircle,
+  StopCircle,
   RotateCcw
 } from "lucide-react"
 import { toast } from "sonner"
@@ -221,7 +221,7 @@ export function TimerWidget({ taskId, onTimeLogged }: TimerWidgetProps) {
                 variant="destructive"
                 className="flex items-center gap-2"
               >
-                <SquareCircle className="h-4 w-4" />
+                <StopCircle className="h-4 w-4" />
                 Stop
               </Button>
             </>
@@ -243,7 +243,7 @@ export function TimerWidget({ taskId, onTimeLogged }: TimerWidgetProps) {
                 variant="destructive"
                 className="flex items-center gap-2"
               >
-                <SquareCircle className="h-4 w-4" />
+                <StopCircle className="h-4 w-4" />
                 Stop
               </Button>
             </>
