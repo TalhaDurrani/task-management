@@ -25,7 +25,7 @@ export class WorkspaceService {
       // Users can only see workspaces they're assigned to
       let whereClause = {}
       
-      if (user.role === 'SUPER_ADMIN') {
+      if (user.role === 'ADMIN') {
         // Super admins can see all workspaces
         whereClause = {}
       } else if (user.role === 'ADMIN') {
@@ -33,14 +33,13 @@ export class WorkspaceService {
         if (!user.organizationId) {
           throw new Error('User not assigned to any organization')
         }
-        whereClause = { organizationId: user.organizationId }
+        whereClause = { }
       } else {
         // Regular users can only see workspaces they're assigned to
         if (!user.organizationId) {
           throw new Error('User not assigned to any organization')
         }
         whereClause = {
-          organizationId: user.organizationId,
           users: { some: { id: userId } }
         }
       }
@@ -88,15 +87,14 @@ export class WorkspaceService {
         include: { organization: true }
       })
 
-      if (!user || !user.organizationId) {
+      if (!user ) {
         throw new Error('User not assigned to any organization')
       }
 
       const workspace = await prisma.workspace.findFirst({
         where: {
           id,
-          organizationId: user.organizationId,
-          ...(user.role === 'USER' ? { users: { some: { id: userId } } } : {})
+          ...(user.role === 'MEMBER' ? { users: { some: { id: userId } } } : {})
         },
         include: {
           organization: {
@@ -151,7 +149,7 @@ export class WorkspaceService {
         include: { organization: true }
       })
 
-      if (!user || user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      if (!user || user.role !== 'ADMIN' && user.role !== 'ADMIN') {
         throw new Error('Only admins can create workspaces')
       }
 
@@ -195,14 +193,13 @@ export class WorkspaceService {
         include: { organization: true }
       })
 
-      if (!user || user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      if (!user || user.role !== 'ADMIN' && user.role !== 'ADMIN') {
         throw new Error('Access denied')
       }
 
       const workspace = await prisma.workspace.findFirst({
         where: {
           id,
-          organizationId: user.organizationId,
           ...(user.role === 'ADMIN' ? { users: { some: { id: userId } } } : {})
         }
       })
@@ -247,14 +244,13 @@ export class WorkspaceService {
         include: { organization: true }
       })
 
-      if (!user || user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      if (!user || user.role !== 'ADMIN' && user.role !== 'ADMIN') {
         throw new Error('Access denied')
       }
 
       const workspace = await prisma.workspace.findFirst({
         where: {
           id,
-          organizationId: user.organizationId,
           ...(user.role === 'ADMIN' ? { users: { some: { id: userId } } } : {})
         }
       })
@@ -315,7 +311,7 @@ export class WorkspaceService {
         include: { organization: true }
       })
 
-      if (!admin || admin.role !== 'ADMIN' && admin.role !== 'SUPER_ADMIN') {
+      if (!admin || admin.role !== 'ADMIN' && admin.role !== 'ADMIN') {
         throw new Error('Access denied')
       }
 
@@ -357,7 +353,7 @@ export class WorkspaceService {
         include: { organization: true }
       })
 
-      if (!admin || admin.role !== 'ADMIN' && admin.role !== 'SUPER_ADMIN') {
+      if (!admin || admin.role !== 'ADMIN' && admin.role !== 'ADMIN') {
         throw new Error('Access denied')
       }
 

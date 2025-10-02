@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Only super admins can view all users for management
-    if (user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'ADMIN') {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
@@ -21,7 +21,6 @@ export async function GET(request: NextRequest) {
         name: true,
         email: true,
         role: true,
-        organizationId: true,
         workspaceId: true,
         createdAt: true,
         organization: {
@@ -64,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Only super admins can create users
-    if (user.role !== "SUPER_ADMIN") {
+    if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -101,7 +100,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate role
-    if (role && !["USER", "ADMIN", "SUPER_ADMIN"].includes(role)) {
+    if (role && !["MEMBER", "ADMIN", "ADMIN"].includes(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 })
     }
 
@@ -123,7 +122,7 @@ export async function POST(request: NextRequest) {
         name,
         email,
         password: hashedPassword,
-        role: role || "USER",
+        role: role || "MEMBER",
         organizationId: organizationId,
         workspaceId: workspaceId
       },
@@ -132,7 +131,6 @@ export async function POST(request: NextRequest) {
         name: true,
         email: true,
         role: true,
-        organizationId: true,
         workspaceId: true,
         createdAt: true,
         organization: {

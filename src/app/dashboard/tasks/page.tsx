@@ -37,7 +37,7 @@ export default function TasksPage() {
       title: task.title || 'Untitled Task',
       description: task.description,
       type: task.type,
-      status: mapStatusToUI(task.status),
+      status: mapStatusToUI(task.status?.toUpperCase()),
       priority: "medium", // Default priority since it's not in the API
       labels: task.label ? task.label.split(',').map((l: string) => l.trim()) : [],
       projectId: task.projectId,
@@ -69,7 +69,7 @@ export default function TasksPage() {
   // Map API status to UI status
   const mapStatusToUI = (apiStatus: string) => {
     switch (apiStatus) {
-      case 'PENDING': return 'todo'
+      case 'TODO': return 'todo'
       case 'IN_PROGRESS': return 'in-progress'
       case 'DONE': return 'done'
       case 'CANCELLED': return 'todo' // Map cancelled to todo for now
@@ -107,9 +107,12 @@ export default function TasksPage() {
                 console.error(`Error loading tasks for project ${project.id}:`, error)
               }
             }
-            
+console.log("all tasks data", allTasksData)
+          
+
             // Transform the data for UI components
             const transformedTasks = transformTaskData(allTasksData)
+         
             setAllTasks(transformedTasks)
           }
         } else {

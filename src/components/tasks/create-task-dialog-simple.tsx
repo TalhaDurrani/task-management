@@ -56,12 +56,12 @@ import { cn } from "@/lib/utils"
 const formSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  type: z.string().default("TASK"),
+  type: z.string(),
   projectId: z.string().min(1, "Project is required"),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
-  status: z.string().default("TODO"),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+  status: z.string(),
   dueDate: z.date().optional(),
-  assignees: z.array(z.string()).default([]),
+  assignees: z.array(z.string()),
 })
 
 type FormData = z.infer<typeof formSchema>

@@ -16,8 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         id: params.id,
         project: {
           workspaceId: user.workspaceId,
-          organizationId: user.organizationId
-        }
+          }
       },
       include: {
         project: { select: { id: true, title: true } },
@@ -88,7 +87,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       switch (error.message) {
         case 'Task not found or access denied':
           return NextResponse.json({ error: "Task not found" }, { status: 404 })
-        case 'User not assigned to workspace or organization':
+        case 'User not assigned to workspace':
           return NextResponse.json({ error: "Unauthorized access" }, { status: 403 })
         default:
           return NextResponse.json({ error: error.message }, { status: 500 })

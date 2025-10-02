@@ -11,7 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     // Only super admins can view individual user details
-    if (user.role !== "SUPER_ADMIN") {
+    if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -22,7 +22,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         name: true,
         email: true,
         role: true,
-        organizationId: true,
         workspaceId: true,
         createdAt: true,
         organization: {
@@ -65,7 +64,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     // Only super admins can update users
-    if (user.role !== "SUPER_ADMIN") {
+    if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -73,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { name, email, role, organizationId, workspaceId, password } = body
 
     // Validate role
-    if (role && !["USER", "ADMIN", "SUPER_ADMIN"].includes(role)) {
+    if (role && !["MEMBER", "ADMIN", "ADMIN"].includes(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 })
     }
 
@@ -110,7 +109,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         name: true,
         email: true,
         role: true,
-        organizationId: true,
         workspaceId: true,
         createdAt: true,
         organization: {
@@ -153,7 +151,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     // Only super admins can delete users
-    if (user.role !== "SUPER_ADMIN") {
+    if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

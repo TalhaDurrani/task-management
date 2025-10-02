@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Search users (only if user is admin or super admin)
-    if ((type === "all" || type === "users") && (user.role === "ADMIN" || user.role === "SUPER_ADMIN")) {
+    if ((type === "all" || type === "users") && (user.role === "ADMIN" || user.role === "ADMIN")) {
       const users = await prisma.user.findMany({
         where: {
           OR: [
@@ -147,8 +147,7 @@ export async function GET(request: NextRequest) {
           ],
           // Only show users from the same organization for regular admins
           ...(user.role === "ADMIN" ? {
-            organizationId: user.organizationId
-          } : {})
+            } : {})
         },
         include: {
           organization: {

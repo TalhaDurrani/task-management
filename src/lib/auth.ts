@@ -37,7 +37,7 @@ export class AuthService {
     name: string, 
     email: string, 
     password: string,
-    role?: 'USER' | 'ADMIN'
+    workspaceName?: string
   }) {
     try {
       // Validate input
@@ -55,21 +55,46 @@ export class AuthService {
       // Hash password
       const hashedPassword = await bcrypt.hash(validatedData.password, 10)
 
-      // Create user
-      const user = await prisma.user.create({
-        data: {
-          name: validatedData.name,
-          email: validatedData.email,
-          password: hashedPassword,
-          role: data.role || 'USER'
-        }
+      // Create user with workspace in a transaction
+      const result = await prisma.$transaction(async (tx) => {
+        // Create the user first (as admin since they're creating the workspace)
+        const user = await tx.user.create({
+          data: {
+            name: validatedData.name,
+            email: validatedData.email,
+            password: hashedPassword,
+            role: 'ADMIN' // User who creates account becomes admin of their workspace
+          }
+        })
+
+        // Create workspace with the user as owner
+        const workspace = await tx.workspace.create({
+          data: {
+            name: data.workspaceName || `${validatedData.name}'s Workspace`,
+            description: 'My workspace',
+            ownerId: user.id
+          } as any
+        })
+
+        // Update user with workspaceId
+        const updatedUser = await tx.user.update({
+          where: { id: user.id },
+          data: { workspaceId: workspace.id }
+        })
+
+        return { user: updatedUser, workspace }
       })
 
       return { 
-        id: user.id, 
-        name: user.name, 
-        email: user.email, 
-        role: user.role 
+        id: result.user.id, 
+        name: result.user.name, 
+        email: result.user.email, 
+        role: result.user.role,
+        workspaceId: result.workspace.id,
+        workspace: {
+          id: result.workspace.id,
+          name: result.workspace.name
+        }
       }
     } catch (error) {
       console.error('Registration error:', error)
@@ -83,16 +108,10 @@ export class AuthService {
       // Validate input
       const validatedData = LoginSchema.parse(credentials)
 
-      // Find user with organization and workspace data
+      // Find user with workspace data
       const user = await prisma.user.findUnique({
         where: { email: validatedData.email },
         include: {
-          organization: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
           workspace: {
             select: {
               id: true,
@@ -135,9 +154,7 @@ export class AuthService {
           name: user.name, 
           email: user.email, 
           role: user.role,
-          organizationId: user.organizationId,
           workspaceId: user.workspaceId,
-          organization: user.organization,
           workspace: user.workspace
         }
       }
@@ -157,7 +174,7 @@ export class AuthService {
       return payload as { 
         id: string, 
         email: string, 
-        role: 'USER' | 'ADMIN' 
+        role: 'MEMBER' | 'ADMIN' 
       }
     } catch (error) {
       return null
@@ -181,18 +198,12 @@ export class AuthService {
         name: true,
         email: true,
         role: true,
-        organizationId: true,
         workspaceId: true,
-        organization: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
         workspace: {
           select: {
             id: true,
-            name: true
+            name: true,
+            description: true
           }
         }
       }

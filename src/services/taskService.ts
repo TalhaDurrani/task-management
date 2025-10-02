@@ -18,39 +18,38 @@ const mapStatusToDb = (status: string): 'TODO' | 'IN_PROGRESS' | 'DONE' => {
   }
 }
 
-const mapStatusFromDb = (status: string): 'todo' | 'in-progress' | 'done' => {
-  switch (status) {
-    case 'TODO':
-      return 'todo'
-    case 'IN_PROGRESS':
-      return 'in-progress'
-    case 'DONE':
-      return 'done'
-    default:
-      return 'todo' // Default fallback
-  }
-}
+// const mapStatusFromDb = (status: string): 'todo' | 'in-progress' | 'done' => {
+//   switch (status) {
+//     case 'TODO':
+//       return 'todo'
+//     case 'IN_PROGRESS':
+//       return 'in-progress'
+//     case 'DONE':
+//       return 'done'
+//     default:
+//       return 'todo' // Default fallback
+//   }
+// }
 
 export class TaskService {
   static async getTasks(projectId: string, userId: string) {
     try {
-      // Get the user's workspace and organization
+      // Get the user's workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
-      if (!user || !user.workspaceId || !user.organizationId) {
-        throw new Error('User not assigned to workspace or organization')
+      if (!user || !user.workspaceId ) {
+        throw new Error('User not assigned to workspace')
       }
 
-      // Check if user has access to the project (same workspace and organization)
+      // Check if user has access to the project (same workspace)
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
           workspaceId: user.workspaceId,
-          organizationId: user.organizationId
-        }
+          }
       })
 
       if (!project) {
@@ -154,7 +153,7 @@ export class TaskService {
         createdBy: task.createdBy,
         completedAt: task.completedAt,
         priority: task.priority.toLowerCase(),
-        status: mapStatusFromDb(task.status),
+        status:task.status,
         dueDate: task.dueDate,
         createdAt: task.createdAt,
         creator: task.creator,
@@ -183,10 +182,9 @@ export class TaskService {
           taskId: timeLog.taskId,
           userId: timeLog.userId,
           logDate: timeLog.logDate,
-          hours: timeLog.hours,
+          hours: timeLog.hoursSpent,
           description: timeLog.description,
           createdAt: timeLog.createdAt,
-          updatedAt: timeLog.updatedAt,
           user: timeLog.user
         })),
         attachments: task.attachments.map(attachment => ({
@@ -216,14 +214,14 @@ export class TaskService {
 
   static async getTask(taskId: string, userId: string) {
     try {
-      // Get the user's workspace and organization
+      // Get the user's workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
-      if (!user || !user.workspaceId || !user.organizationId) {
-        throw new Error('User not assigned to workspace or organization')
+      if (!user || !user.workspaceId ) {
+        throw new Error('User not assigned to workspace')
       }
 
       const task = await prisma.task.findFirst({
@@ -231,8 +229,7 @@ export class TaskService {
           id: taskId,
           project: {
             workspaceId: user.workspaceId,
-            organizationId: user.organizationId
-          }
+            }
         },
         include: {
           creator: {
@@ -358,10 +355,9 @@ export class TaskService {
           taskId: timeLog.taskId,
           userId: timeLog.userId,
           logDate: timeLog.logDate,
-          hours: timeLog.hours,
+          hours: timeLog.hoursSpent,
           description: timeLog.description,
           createdAt: timeLog.createdAt,
-          updatedAt: timeLog.updatedAt,
           user: timeLog.user
         })),
         attachments: task.attachments.map(attachment => ({
@@ -393,11 +389,11 @@ export class TaskService {
   private static async validateUserAndWorkspace(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { workspaceId: true, organizationId: true }
+      select: { workspaceId: true, }
     })
 
-    if (!user || !user.workspaceId || !user.organizationId) {
-      throw new Error('User not assigned to workspace or organization')
+    if (!user || !user.workspaceId ) {
+      throw new Error('User not assigned to workspace')
     }
 
     return user
@@ -525,24 +521,23 @@ export class TaskService {
 
   static async updateTask(taskId: string, data: UpdateTaskData, userId: string) {
     try {
-      // Get the user's workspace and organization
+      // Get the user's workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
-      if (!user || !user.workspaceId || !user.organizationId) {
-        throw new Error('User not assigned to workspace or organization')
+      if (!user || !user.workspaceId ) {
+        throw new Error('User not assigned to workspace')
       }
 
-      // Verify task access (same workspace and organization)
+      // Verify task access (same workspace)
       const existingTask = await prisma.task.findFirst({
         where: {
           id: taskId,
           project: {
             workspaceId: user.workspaceId,
-            organizationId: user.organizationId
-          }
+            }
         }
       })
 
@@ -651,14 +646,14 @@ export class TaskService {
     }
   ) {
     try {
-      // Get the user's workspace and organization for validation
+      // Get the user's workspace for validation
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
-      if (!user || !user.workspaceId || !user.organizationId) {
-        throw new Error('User not assigned to workspace or organization')
+      if (!user || !user.workspaceId ) {
+        throw new Error('User not assigned to workspace')
       }
 
       // Convert string status to enum - handle both UI and API formats
@@ -689,8 +684,7 @@ export class TaskService {
           id: taskId,
           project: {
             workspaceId: user.workspaceId,
-            organizationId: user.organizationId
-          }
+            }
         },
         include: { 
           assignees: { 
@@ -784,24 +778,23 @@ export class TaskService {
 
   static async deleteTask(taskId: string, userId: string) {
     try {
-      // Get the user's workspace and organization
+      // Get the user's workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
-      if (!user || !user.workspaceId || !user.organizationId) {
-        throw new Error('User not assigned to workspace or organization')
+      if (!user || !user.workspaceId ) {
+        throw new Error('User not assigned to workspace')
       }
 
-      // Verify task access (same workspace and organization)
+      // Verify task access (same workspace)
       const task = await prisma.task.findFirst({
         where: {
           id: taskId,
           project: {
             workspaceId: user.workspaceId,
-            organizationId: user.organizationId
-          }
+            }
         }
       })
 
@@ -824,14 +817,14 @@ export class TaskService {
   // Get tasks assigned to a specific user
   static async getUserAssignedTasks(userId: string) {
     try {
-      // Get user's workspace and organization for proper isolation
+      // Get user's workspace for proper isolation
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
-      if (!user || !user.workspaceId || !user.organizationId) {
-        throw new Error('User not assigned to workspace or organization')
+      if (!user || !user.workspaceId ) {
+        throw new Error('User not assigned to workspace')
       }
 
       // Get all tasks assigned to this user in their workspace
@@ -842,11 +835,10 @@ export class TaskService {
               userId: userId
             }
           },
-          // Ensure tasks are from projects in the same workspace/organization
+          // Ensure tasks are from projects in the same workspace
           project: {
             workspaceId: user.workspaceId,
-            organizationId: user.organizationId
-          }
+            }
         },
         include: {
           creator: {

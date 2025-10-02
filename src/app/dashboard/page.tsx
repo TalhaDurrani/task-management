@@ -6,11 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ActivityFeed } from "@/components/activity/activity-feed"
 import { DashboardStats } from "@/components/dashboard/dashboard-stats"
 import { QuickActions } from "@/components/dashboard/quick-actions"
+import { LoadingDashboard } from "@/components/ui/loading"
 // Remove old hardcoded auth import
 
 export default function DashboardPage() {
-  const [currentUser, setCurrentUser] = useState(null)
-  const [projects, setProjects] = useState([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [projects, setProjects] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
@@ -47,14 +48,7 @@ export default function DashboardPage() {
   }, [router])
   
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    )
+    return <LoadingDashboard />
   }
 
   if (!currentUser) {
@@ -84,9 +78,9 @@ export default function DashboardPage() {
 
   for (const project of projects) {
     taskCounts.total += project.tasks.length
-    taskCounts.todo += project.tasks.filter((t) => t.status === "todo").length
-    taskCounts.inProgress += project.tasks.filter((t) => t.status === "in_progress").length
-    taskCounts.done += project.tasks.filter((t) => t.status === "done").length
+    taskCounts.todo += project.tasks.filter((t: any) => t.status === "todo").length
+    taskCounts.inProgress += project.tasks.filter((t: any) => t.status === "in_progress").length
+    taskCounts.done += project.tasks.filter((t: any) => t.status === "done").length
   }
 
   // Get all tasks from all projects

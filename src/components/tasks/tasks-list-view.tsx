@@ -789,6 +789,9 @@ export function TasksListView({
       }
     })
 
+    console.log('🔍 Filtered and sorted tasks:', filteredAndSortedTasks)
+    console.log("all task", tasks)
+
   return (
     <>
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -1095,7 +1098,8 @@ export function TasksListView({
                           variant="outline" 
                           className={`text-xs font-medium cursor-pointer ${getStatusColor(task.status)}`}
                         >
-                          {getStatusDisplayText(task.status)}
+                          {/* {getStatusDisplayText(task.status)} */}
+                          {task.status}
                         </Badge>
                       </SelectTrigger>
                       <SelectContent className="z-50">

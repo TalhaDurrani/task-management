@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     console.log(`🔍 Fetching tasks for project: ${projectId}, user: ${user.id}`)
     const tasks = await TaskService.getTasks(projectId, user.id)
     console.log(`📊 Fetched ${tasks.length} tasks`)
+       console.log(`📊\n\n\n\n\n\n\n\nn\\n\n Fetched  tasks`,tasks,"\n\n\n\n\n")
     
     // Log first task status for debugging
     if (tasks.length > 0) {

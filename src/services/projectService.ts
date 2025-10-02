@@ -7,7 +7,7 @@ export class ProjectService {
       // Get user's workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
       if (!user) {
@@ -22,7 +22,6 @@ export class ProjectService {
       const projects = await prisma.project.findMany({
         where: {
           workspaceId: user.workspaceId,
-          organizationId: user.organizationId
           // Remove the OR condition - users should see all projects in their workspace
         },
         include: {
@@ -85,21 +84,20 @@ export class ProjectService {
 
   static async getProject(id: string, userId: string) {
     try {
-      // First get the user's workspace and organization
+      // First get the user's workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
-      if (!user || !user.workspaceId || !user.organizationId) {
-        throw new Error('User not assigned to workspace or organization')
+      if (!user || !user.workspaceId ) {
+        throw new Error('User not assigned to workspace')
       }
 
       const project = await prisma.project.findFirst({
         where: {
           id: id,
           workspaceId: user.workspaceId,
-          organizationId: user.organizationId
           // Users should be able to access any project in their workspace
         },
         include: {
@@ -210,18 +208,18 @@ export class ProjectService {
 
   static async createProject(data: CreateProjectData, userId: string) {
     try {
-      // Get user's workspace and organization
+      // Get user's workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, organizationId: true }
+        select: { workspaceId: true, }
       })
 
       if (!user) {
         throw new Error('User not found')
       }
 
-      if (!user.workspaceId || !user.organizationId) {
-        throw new Error('User must be assigned to a workspace and organization to create projects. Please contact your administrator.')
+      if (!user.workspaceId ) {
+        throw new Error('User must be assigned to a workspace to create projects. Please contact your administrator.')
       }
 
       const project = await prisma.project.create({
@@ -233,7 +231,6 @@ export class ProjectService {
           userId: userId,
           createdBy: userId,
           workspaceId: user.workspaceId,
-          organizationId: user.organizationId,
           noOfAssignedUsers: 1
         },
         include: {
