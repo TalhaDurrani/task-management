@@ -299,6 +299,9 @@ export interface CreateProjectData {
   projectName?: string
   projectDocument?: string
   memberIds?: string[]
+  workspaceId?: string
 }
 
-export interface UpdateProjectData extends Partial<CreateProjectData> {}
+export interface UpdateProjectData extends Partial<CreateProjectData> {
+  completedAt?: Date | null
+}

@@ -24,12 +24,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         role: true,
         workspaceId: true,
         createdAt: true,
-        organization: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
         workspace: {
           select: {
             id: true,
@@ -39,7 +33,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         _count: {
           select: {
             projects: true,
-            tasks: true
+            createdTasks: true,
+            assignedTasks: true
           }
         }
       }
@@ -69,10 +64,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const body = await request.json()
-    const { name, email, role, organizationId, workspaceId, password } = body
+    const { name, email, role, workspaceId, password } = body
 
     // Validate role
-    if (role && !["MEMBER", "ADMIN", "ADMIN"].includes(role)) {
+    if (role && !["MEMBER", "ADMIN"].includes(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 })
     }
 
@@ -95,8 +90,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (name) updateData.name = name
     if (email) updateData.email = email
     if (role) updateData.role = role
-    if (organizationId) updateData.organizationId = organizationId
-    if (workspaceId) updateData.workspaceId = workspaceId
+    if (workspaceId !== undefined) updateData.workspaceId = workspaceId
     if (password) {
       updateData.password = await bcrypt.hash(password, 12)
     }
@@ -111,12 +105,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         role: true,
         workspaceId: true,
         createdAt: true,
-        organization: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
         workspace: {
           select: {
             id: true,

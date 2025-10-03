@@ -18,6 +18,16 @@ interface TasksPageProps {
     id: string
   }
 }
+ export const mapStatusToUI = (apiStatus: string) => {
+    switch (apiStatus) {
+      case 'TODO': return 'todo'
+      case 'PENDING': return 'todo'
+      case 'IN_PROGRESS': return 'in-progress'
+      case 'DONE': return 'done'
+      case 'CANCELLED': return 'todo' // Map cancelled to todo for now
+      default: return 'todo'
+    }
+  }  
 
 export default function TasksPage({ params }: TasksPageProps) {
   const [currentUser, setCurrentUser] = useState<any>(null)
@@ -34,7 +44,7 @@ export default function TasksPage({ params }: TasksPageProps) {
       description: task.description,
       type: task.type,
       status: mapStatusToUI(task.status),
-      priority: "medium", // Default priority since it's not in the API
+      priority: task.priority || 'not setted', // Default priority since it's not in the API
       labels: task.label ? task.label.split(',').map((l: string) => l.trim()) : [],
       projectId: task.projectId,
       project: {
@@ -63,15 +73,7 @@ export default function TasksPage({ params }: TasksPageProps) {
   }
 
   // Map API status to UI status
-  const mapStatusToUI = (apiStatus: string) => {
-    switch (apiStatus) {
-      case 'PENDING': return 'todo'
-      case 'IN_PROGRESS': return 'in-progress'
-      case 'DONE': return 'done'
-      case 'CANCELLED': return 'todo' // Map cancelled to todo for now
-      default: return 'todo'
-    }
-  }
+
 
   useEffect(() => {
     const loadData = async () => {

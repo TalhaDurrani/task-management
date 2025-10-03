@@ -164,9 +164,9 @@ taskflow/
 
 After setup, you can use these default credentials:
 
-- **Super Admin**: `superadmin@taskflow.com` / `password123`
-- **Admin**: `admin@taskflow.com` / `password123`
-- **User**: `user@taskflow.com` / `password123`
+- **Admin**: `admin@example.com` / `admin123`
+- **Member**: `john@example.com` / `member123`
+- **Member**: `jane@example.com` / `member123`
 
 ## 📊 Database Schema
 
@@ -174,8 +174,9 @@ After setup, you can use these default credentials:
 
 #### **User**
 - Authentication and profile information
-- Role-based access control (SUPER_ADMIN, ADMIN, USER)
-- Organization and workspace assignments
+- Role-based access control (ADMIN, MEMBER)
+- Workspace assignments
+- Workspace owners have ADMIN role
 
 #### **Organization**
 - Top-level organizational structure

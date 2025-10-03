@@ -10,13 +10,8 @@ interface Workspace {
   id: string
   name: string
   description: string | null
-  organizationId: string
   createdAt: Date
   updatedAt: Date
-  organization: {
-    id: string
-    name: string
-  }
   _count: {
     users: number
     projects: number
@@ -54,8 +49,8 @@ export default function WorkspacesPage() {
         if (userResult.success && userResult.user) {
           setCurrentUser(userResult.user)
           
-          // Check if user is admin or super admin
-          if (userResult.user.role !== 'ADMIN' && userResult.user.role !== 'SUPER_ADMIN') {
+          // Check if user is admin
+          if (userResult.user.role !== 'ADMIN') {
             router.push('/dashboard')
             return
           }
@@ -86,7 +81,7 @@ export default function WorkspacesPage() {
     )
   }
 
-  if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN')) {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Card className="w-full max-w-md">
@@ -108,7 +103,7 @@ export default function WorkspacesPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Workspaces</h1>
         <p className="text-muted-foreground">
-          Manage workspaces within your organization.
+          Manage all workspaces, projects, and team collaboration.
         </p>
       </div>
 

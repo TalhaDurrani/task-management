@@ -7,8 +7,20 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Users, Settings, BarChart3, Shield, Database, Activity } from "lucide-react"
 
+interface AdminUser {
+  id: string
+  name: string
+  email: string
+  role: "ADMIN" | "MEMBER"
+  workspaceId: string | null
+  workspace?: {
+    id: string
+    name: string
+  } | null
+}
+
 export default function AdminDashboard() {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState<AdminUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
@@ -20,13 +32,21 @@ export default function AdminDashboard() {
         })
         const result = await response.json()
         
+        // Debug logging to help identify role issues
+        console.log('🔍 Admin page - Response:', result)
+        console.log('🔍 Admin page - User:', result.user)
+        console.log('🔍 Admin page - Role:', result.user?.role)
+        console.log('🔍 Admin page - Role type:', typeof result.user?.role)
+        console.log('🔍 Admin page - Is ADMIN?:', result.user?.role === "ADMIN")
+        
         if (result.success && result.user) {
           setUser(result.user)
         } else {
+          console.warn('⚠️ Admin page - No user or failed response, redirecting to signin')
           router.push("/auth/signin?callbackUrl=/dashboard/admin")
         }
       } catch (error) {
-        console.error('Failed to load user:', error)
+        console.error('❌ Admin page - Failed to load user:', error)
         router.push("/auth/signin?callbackUrl=/dashboard/admin")
       }
       setIsLoading(false)
@@ -47,6 +67,7 @@ export default function AdminDashboard() {
   }
 
   if (!user || user.role !== "ADMIN") {
+    console.warn('⚠️ Admin page - Access denied. User:', user, 'Role:', user?.role)
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Card className="w-full max-w-md">
@@ -54,9 +75,15 @@ export default function AdminDashboard() {
             <div className="text-center">
               <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
-              <p className="text-muted-foreground">
+              <p className="text-muted-foreground mb-4">
                 You need admin privileges to access this page.
               </p>
+              {user && (
+                <div className="text-xs text-muted-foreground bg-muted p-3 rounded-md">
+                  <p>Current role: <span className="font-mono font-semibold">{user.role}</span></p>
+                  <p className="mt-1">Required role: <span className="font-mono font-semibold">ADMIN</span></p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

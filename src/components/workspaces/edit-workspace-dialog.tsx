@@ -12,13 +12,8 @@ interface Workspace {
   id: string
   name: string
   description: string | null
-  organizationId: string
   createdAt: Date
   updatedAt: Date
-  organization: {
-    id: string
-    name: string
-  }
 }
 
 interface EditWorkspaceDialogProps {
@@ -82,15 +77,6 @@ export function EditWorkspaceDialog({ workspace, open, onOpenChange }: EditWorks
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="organization">Organization</Label>
-              <Input
-                id="organization"
-                value={workspace.organization.name}
-                disabled
-                className="bg-muted"
-              />
-            </div>
             <div className="grid gap-2">
               <Label htmlFor="name">Name *</Label>
               <Input

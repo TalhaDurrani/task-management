@@ -54,6 +54,15 @@ const getMainNavigation = (currentUser: any, userTaskCount: number = 0) => [
   },
 ]
 
+const workspaceNavigation = [
+  {
+    name: "Workspaces",
+    href: "/dashboard/workspaces",
+    icon: Building2,
+    badge: null,
+  },
+]
+
 const projectNavigation = [
   {
     name: "Projects",
@@ -100,18 +109,6 @@ const teamNavigation = [
 ]
 
 const adminNavigation = [
-  {
-    name: "Organizations",
-    href: "/dashboard/admin/organizations",
-    icon: Building2,
-    badge: null,
-  },
-  {
-    name: "Workspaces",
-    href: "/dashboard/admin/workspaces",
-    icon: FolderOpen,
-    badge: null,
-  },
   {
     name: "Users",
     href: "/dashboard/admin/users",
@@ -350,6 +347,9 @@ export function Sidebar() {
         {/* Main Navigation */}
         <NavigationSection title="Main" items={getMainNavigation(currentUser, userTaskCount)} />
 
+        {/* Workspaces */}
+        <NavigationSection title="Workspaces" items={workspaceNavigation} />
+
         {/* Projects */}
         <div className="mb-6">
           <div className="flex items-center justify-between px-3 mb-2">
@@ -415,13 +415,8 @@ export function Sidebar() {
         <NavigationSection title="Team" items={teamNavigation} />
 
         {/* Admin Section - Only show for admin users */}
-        {(currentUser?.role === "ADMIN" || currentUser?.role === "SUPER_ADMIN") && (
+        {currentUser?.role === "ADMIN" && (
           <NavigationSection title="Administration" items={adminNavigation} />
-        )}
-
-        {/* Developer Section - Only show for developer users */}
-        {currentUser?.role === "developer" && (
-          <NavigationSection title="Development" items={developerNavigation} />
         )}
 
         {/* Favorites */}

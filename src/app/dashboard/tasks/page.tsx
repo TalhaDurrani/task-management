@@ -22,7 +22,7 @@ export default function TasksPage() {
   const [allTasks, setAllTasks] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<"grid" | "list" | "kanban">("kanban")
+  const [viewMode, setViewMode] = useState<"grid" | "list" | "kanban" | "grouped">("grouped")
   const [sortBy, setSortBy] = useState("createdAt")
   const [filterStatus, setFilterStatus] = useState("all")
   const [filterPriority, setFilterPriority] = useState("all")
@@ -192,6 +192,45 @@ console.log("all tasks data", allTasksData)
     return matchesSearch && matchesStatus && matchesPriority && matchesProject
   })
 
+  // Group tasks by project
+  const groupedTasksByProject = () => {
+    const groups: { [projectId: string]: { project: any, tasks: any[] } } = {}
+    
+    filteredTasks.forEach(task => {
+      const projectId = task.projectId || 'unassigned'
+      if (!groups[projectId]) {
+        groups[projectId] = {
+          project: task.project || { id: 'unassigned', name: 'Unassigned' },
+          tasks: []
+        }
+      }
+      groups[projectId].tasks.push(task)
+    })
+    
+    // Sort tasks within each project
+    Object.values(groups).forEach(group => {
+      group.tasks.sort((a, b) => {
+        switch (sortBy) {
+          case "title":
+            return a.title.localeCompare(b.title)
+          case "priority":
+            const priorityOrder: { [key: string]: number } = { critical: 4, high: 3, medium: 2, low: 1 }
+            return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0)
+          case "dueDate":
+            if (!a.timelineEnd && !b.timelineEnd) return 0
+            if (!a.timelineEnd) return 1
+            if (!b.timelineEnd) return -1
+            return a.timelineEnd.getTime() - b.timelineEnd.getTime()
+          case "createdAt":
+          default:
+            return b.createdAt.getTime() - a.createdAt.getTime()
+        }
+      })
+    })
+    
+    return groups
+  }
+
   const sortedTasks = filteredTasks.sort((a, b) => {
     switch (sortBy) {
       case "title":
@@ -294,6 +333,14 @@ console.log("all tasks data", allTasksData)
             {/* View Controls */}
             <div className="flex items-center space-x-1">
               <Button
+                variant={viewMode === "grouped" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("grouped")}
+                title="Grouped by Project"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
                 variant={viewMode === "kanban" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setViewMode("kanban")}
@@ -354,6 +401,43 @@ console.log("all tasks data", allTasksData)
               </p>
             </CardContent>
           </Card>
+        ) : viewMode === "grouped" ? (
+          <div className="space-y-6">
+            {Object.entries(groupedTasksByProject()).map(([projectId, group]) => (
+              <Card key={projectId}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <LayoutGrid className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-xl">{group.project.name}</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          {group.tasks.length} {group.tasks.length === 1 ? 'task' : 'tasks'}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="secondary">
+                      {group.tasks.filter(t => t.status === "done").length} / {group.tasks.length} completed
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {group.tasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onEdit={handleEditTask}
+                        onDelete={handleDeleteTask}
+                      />
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         ) : viewMode === "kanban" ? (
           <SimpleKanban
             tasks={sortedTasks}

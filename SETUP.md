@@ -34,9 +34,9 @@ NEXT_PUBLIC_VERCEL_ANALYTICS_ID=""
 
 After setup, you can use these default credentials:
 
-- **Super Admin**: superadmin@taskflow.com / password123
-- **Admin**: admin@taskflow.com / password123
-- **User**: user@taskflow.com / password123
+- **Admin**: admin@example.com / admin123
+- **Member**: john@example.com / member123
+- **Member**: jane@example.com / member123
 
 ## Development
 

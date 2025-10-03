@@ -9,13 +9,8 @@ interface Workspace {
   id: string
   name: string
   description: string | null
-  organizationId: string
   createdAt: Date
   updatedAt: Date
-  organization: {
-    id: string
-    name: string
-  }
 }
 
 interface DeleteWorkspaceDialogProps {

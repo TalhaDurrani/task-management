@@ -14,13 +14,8 @@ interface User {
   id: string
   name: string
   email: string
-  role: "USER" | "ADMIN" | "SUPER_ADMIN"
-  organizationId: string | null
+  role: "MEMBER" | "ADMIN"
   workspaceId: string | null
-  organization?: {
-    id: string
-    name: string
-  } | null
   workspace?: {
     id: string
     name: string
@@ -45,7 +40,7 @@ export default function UserManagementPage() {
         const usersData = await response.json()
         setUsers(usersData)
       } else if (response.status === 403) {
-        toast.error("Access denied. Only Super Admins can manage users.")
+        toast.error("Access denied. Only Admins can manage users.")
         router.push('/dashboard')
       } else {
         throw new Error('Failed to load users')
@@ -65,8 +60,8 @@ export default function UserManagementPage() {
         return
       }
 
-      if (currentUser.role !== 'SUPER_ADMIN') {
-        toast.error("Access denied. Only Super Admins can access user management.")
+      if (currentUser.role !== 'ADMIN') {
+        toast.error("Access denied. Only Admins can access user management.")
         router.push('/dashboard')
         return
       }
@@ -86,7 +81,7 @@ export default function UserManagementPage() {
     )
   }
 
-  if (!currentUser || currentUser.role !== 'SUPER_ADMIN') {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Card className="w-full max-w-md">
@@ -94,7 +89,7 @@ export default function UserManagementPage() {
             <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
             <CardTitle>Access Denied</CardTitle>
             <CardDescription>
-              Only Super Admins can access user management.
+              Only Admins can access user management.
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center">
@@ -109,11 +104,10 @@ export default function UserManagementPage() {
 
   // Calculate statistics
   const totalUsers = users.length
-  const superAdmins = users.filter(u => u.role === 'SUPER_ADMIN').length
   const admins = users.filter(u => u.role === 'ADMIN').length
-  const regularUsers = users.filter(u => u.role === 'USER').length
-  const assignedUsers = users.filter(u => u.organizationId).length
-  const unassignedUsers = users.filter(u => !u.organizationId).length
+  const members = users.filter(u => u.role === 'MEMBER').length
+  const assignedUsers = users.filter(u => u.workspaceId).length
+  const unassignedUsers = users.filter(u => !u.workspaceId).length
 
   return (
     <div className="space-y-6">
@@ -121,12 +115,12 @@ export default function UserManagementPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
         <p className="text-muted-foreground">
-          Manage users, roles, and permissions across all organizations
+          Manage users, roles, and permissions across all workspaces
         </p>
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -135,20 +129,7 @@ export default function UserManagementPage() {
           <CardContent>
             <div className="text-2xl font-bold">{totalUsers}</div>
             <p className="text-xs text-muted-foreground">
-              Across all organizations
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Super Admins</CardTitle>
-            <Shield className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{superAdmins}</div>
-            <p className="text-xs text-muted-foreground">
-              Full system access
+              Across all workspaces
             </p>
           </CardContent>
         </Card>
@@ -156,25 +137,25 @@ export default function UserManagementPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Admins</CardTitle>
-            <Building2 className="h-4 w-4 text-primary" />
+            <Shield className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{admins}</div>
             <p className="text-xs text-muted-foreground">
-              Organization admins
+              System administrators
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Regular Users</CardTitle>
+            <CardTitle className="text-sm font-medium">Members</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{regularUsers}</div>
+            <div className="text-2xl font-bold">{members}</div>
             <p className="text-xs text-muted-foreground">
-              Standard users
+              Team members
             </p>
           </CardContent>
         </Card>
@@ -186,12 +167,12 @@ export default function UserManagementPage() {
           <CardHeader>
             <CardTitle className="text-lg">Assignment Status</CardTitle>
             <CardDescription>
-              User organization and workspace assignments
+              User workspace assignments
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm">Assigned to Organizations</span>
+              <span className="text-sm">Assigned to Workspaces</span>
               <Badge variant="default">{assignedUsers}</Badge>
             </div>
             <div className="flex items-center justify-between">
@@ -202,7 +183,7 @@ export default function UserManagementPage() {
             </div>
             {unassignedUsers > 0 && (
               <p className="text-xs text-muted-foreground">
-                {unassignedUsers} users need to be assigned to organizations
+                {unassignedUsers} users need to be assigned to workspaces
               </p>
             )}
           </CardContent>

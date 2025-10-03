@@ -3,7 +3,6 @@ import { prisma } from '@/lib/db'
 export interface CreateWorkspaceData {
   name: string
   description?: string
-  organizationId: string
 }
 
 export interface UpdateWorkspaceData extends Partial<CreateWorkspaceData> {}
@@ -12,59 +11,37 @@ export class WorkspaceService {
   static async getWorkspaces(userId: string) {
     try {
       const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { organization: true }
+        where: { id: userId }
       })
 
       if (!user) {
         throw new Error('User not found')
       }
 
-      // Super admins can see all workspaces across all organizations
-      // Regular admins can see workspaces in their organization
-      // Users can only see workspaces they're assigned to
+      // Admins can see all workspaces
+      // Regular users can only see workspaces they own or are assigned to
       let whereClause = {}
       
       if (user.role === 'ADMIN') {
-        // Super admins can see all workspaces
+        // Admins can see all workspaces
         whereClause = {}
-      } else if (user.role === 'ADMIN') {
-        // Admins can see workspaces in their organization
-        if (!user.organizationId) {
-          throw new Error('User not assigned to any organization')
-        }
-        whereClause = { }
       } else {
-        // Regular users can only see workspaces they're assigned to
-        if (!user.organizationId) {
-          throw new Error('User not assigned to any organization')
-        }
+        // Regular users can see workspaces they own or are assigned to via workspaceId
         whereClause = {
-          users: { some: { id: userId } }
+          OR: [
+            { ownerId: userId },
+            { id: user.workspaceId || 'none' }
+          ]
         }
       }
 
       const workspaces = await prisma.workspace.findMany({
         where: whereClause,
         include: {
-          organization: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
-          users: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true
-            }
-          },
           _count: {
             select: {
-              users: true,
-              projects: true
+              projects: true,
+              members: true
             }
           }
         },
@@ -73,7 +50,13 @@ export class WorkspaceService {
         }
       })
 
-      return workspaces
+      return workspaces.map(workspace => ({
+        ...workspace,
+        _count: {
+          ...workspace._count,
+          users: workspace._count.members
+        }
+      }))
     } catch (error) {
       console.error('Error fetching workspaces:', error)
       throw new Error('Failed to fetch workspaces')
@@ -83,35 +66,19 @@ export class WorkspaceService {
   static async getWorkspace(id: string, userId: string) {
     try {
       const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { organization: true }
+        where: { id: userId }
       })
 
-      if (!user ) {
-        throw new Error('User not assigned to any organization')
+      if (!user) {
+        throw new Error('User not found')
       }
 
       const workspace = await prisma.workspace.findFirst({
         where: {
           id,
-          ...(user.role === 'MEMBER' ? { users: { some: { id: userId } } } : {})
+          ...(user.role === 'MEMBER' ? { ownerId: userId } : {})
         },
         include: {
-          organization: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
-          users: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-              createdAt: true
-            }
-          },
           projects: {
             include: {
               user: {
@@ -145,41 +112,46 @@ export class WorkspaceService {
   static async createWorkspace(data: CreateWorkspaceData, userId: string) {
     try {
       const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { organization: true }
+        where: { id: userId }
       })
 
-      if (!user || user.role !== 'ADMIN' && user.role !== 'ADMIN') {
-        throw new Error('Only admins can create workspaces')
+      if (!user) {
+        throw new Error('User not found')
       }
 
-      if (user.role === 'ADMIN' && user.organizationId !== data.organizationId) {
-        throw new Error('Access denied')
-      }
-
+      // Create workspace with the user as the owner and assign user to workspace
       const workspace = await prisma.workspace.create({
         data: {
           name: data.name,
           description: data.description,
-          organizationId: data.organizationId
+          ownerId: userId,
+          members: {
+            connect: { id: userId }
+          }
         },
         include: {
-          organization: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
           _count: {
             select: {
-              users: true,
-              projects: true
+              projects: true,
+              members: true
             }
           }
         }
       })
 
-      return workspace
+      // Also update the user's workspaceId
+      await prisma.user.update({
+        where: { id: userId },
+        data: { workspaceId: workspace.id }
+      })
+
+      return {
+        ...workspace,
+        _count: {
+          ...workspace._count,
+          users: workspace._count.members
+        }
+      }
     } catch (error) {
       console.error('Error creating workspace:', error)
       throw new Error('Failed to create workspace')
@@ -189,23 +161,19 @@ export class WorkspaceService {
   static async updateWorkspace(id: string, data: UpdateWorkspaceData, userId: string) {
     try {
       const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { organization: true }
+        where: { id: userId }
       })
 
-      if (!user || user.role !== 'ADMIN' && user.role !== 'ADMIN') {
+      if (!user || user.role !== 'ADMIN') {
         throw new Error('Access denied')
       }
 
-      const workspace = await prisma.workspace.findFirst({
-        where: {
-          id,
-          ...(user.role === 'ADMIN' ? { users: { some: { id: userId } } } : {})
-        }
+      const workspace = await prisma.workspace.findUnique({
+        where: { id }
       })
 
       if (!workspace) {
-        throw new Error('Workspace not found or access denied')
+        throw new Error('Workspace not found')
       }
 
       const updatedWorkspace = await prisma.workspace.update({
@@ -215,15 +183,8 @@ export class WorkspaceService {
           description: data.description
         },
         include: {
-          organization: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
           _count: {
             select: {
-              users: true,
               projects: true
             }
           }
@@ -240,23 +201,19 @@ export class WorkspaceService {
   static async deleteWorkspace(id: string, userId: string) {
     try {
       const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { organization: true }
+        where: { id: userId }
       })
 
-      if (!user || user.role !== 'ADMIN' && user.role !== 'ADMIN') {
+      if (!user || user.role !== 'ADMIN') {
         throw new Error('Access denied')
       }
 
-      const workspace = await prisma.workspace.findFirst({
-        where: {
-          id,
-          ...(user.role === 'ADMIN' ? { users: { some: { id: userId } } } : {})
-        }
+      const workspace = await prisma.workspace.findUnique({
+        where: { id }
       })
 
       if (!workspace) {
-        throw new Error('Workspace not found or access denied')
+        throw new Error('Workspace not found')
       }
 
       // Delete all related data
@@ -304,22 +261,57 @@ export class WorkspaceService {
     }
   }
 
-  static async addUserToWorkspace(workspaceId: string, userId: string, adminUserId: string) {
+  static async getWorkspaceUsers(workspaceId: string, userId: string) {
     try {
-      const admin = await prisma.user.findUnique({
-        where: { id: adminUserId },
-        include: { organization: true }
+      const user = await prisma.user.findUnique({
+        where: { id: userId }
       })
 
-      if (!admin || admin.role !== 'ADMIN' && admin.role !== 'ADMIN') {
+      if (!user) {
         throw new Error('Access denied')
       }
 
-      const workspace = await prisma.workspace.findFirst({
-        where: {
-          id: workspaceId,
-          organizationId: admin.organizationId
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId }
+      })
+
+      if (!workspace) {
+        throw new Error('Workspace not found')
+      }
+
+      const users = await prisma.user.findMany({
+        where: { workspaceId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true
+        },
+        orderBy: {
+          createdAt: 'desc'
         }
+      })
+
+      return users
+    } catch (error) {
+      console.error('Error fetching workspace users:', error)
+      throw new Error('Failed to fetch workspace users')
+    }
+  }
+
+  static async addUserToWorkspace(workspaceId: string, userId: string, adminUserId: string) {
+    try {
+      const admin = await prisma.user.findUnique({
+        where: { id: adminUserId }
+      })
+
+      if (!admin || admin.role !== 'ADMIN') {
+        throw new Error('Access denied')
+      }
+
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId }
       })
 
       if (!workspace) {
@@ -330,8 +322,8 @@ export class WorkspaceService {
         where: { id: userId }
       })
 
-      if (!user || user.organizationId !== admin.organizationId) {
-        throw new Error('User not found or not in same organization')
+      if (!user) {
+        throw new Error('User not found')
       }
 
       await prisma.user.update({
@@ -349,19 +341,15 @@ export class WorkspaceService {
   static async removeUserFromWorkspace(workspaceId: string, userId: string, adminUserId: string) {
     try {
       const admin = await prisma.user.findUnique({
-        where: { id: adminUserId },
-        include: { organization: true }
+        where: { id: adminUserId }
       })
 
-      if (!admin || admin.role !== 'ADMIN' && admin.role !== 'ADMIN') {
+      if (!admin || admin.role !== 'ADMIN') {
         throw new Error('Access denied')
       }
 
-      const workspace = await prisma.workspace.findFirst({
-        where: {
-          id: workspaceId,
-          organizationId: admin.organizationId
-        }
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId }
       })
 
       if (!workspace) {

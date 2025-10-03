@@ -16,7 +16,7 @@ interface User {
   id: string
   name: string
   email: string
-  role: "USER" | "ADMIN" | "SUPER_ADMIN"
+  role: "MEMBER" | "ADMIN"
 }
 
 interface DeleteUserDialogProps {
@@ -46,7 +46,7 @@ export function DeleteUserDialog({ user, open, onOpenChange, onUserDeleted }: De
       onUserDeleted()
     } catch (error) {
       console.error("Error deleting user:", error)
-      toast.error(`Failed to delete user: ${error.message}`)
+      toast.error(`Failed to delete user: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsLoading(false)
     }

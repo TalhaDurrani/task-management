@@ -23,12 +23,6 @@ export async function GET(request: NextRequest) {
         role: true,
         workspaceId: true,
         createdAt: true,
-        organization: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
         workspace: {
           select: {
             id: true,
@@ -62,41 +56,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Only super admins can create users
+    // Only admins can create users
     if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const body = await request.json()
-    const { name, email, password, role, organizationId, workspaceId } = body
+    const { name, email, password, role, workspaceId } = body
 
     // Validate required fields
     if (!name || !email || !password) {
       return NextResponse.json({ error: "Name, email, and password are required" }, { status: 400 })
     }
 
-    // Validate organization and workspace are required
-    if (!organizationId || !workspaceId) {
-      return NextResponse.json({ error: "Organization and workspace are required" }, { status: 400 })
-    }
-
-    // Verify organization exists
-    const organization = await prisma.organization.findUnique({
-      where: { id: organizationId }
-    })
-    if (!organization) {
-      return NextResponse.json({ error: "Invalid organization" }, { status: 400 })
-    }
-
-    // Verify workspace exists and belongs to the organization
-    const workspace = await prisma.workspace.findFirst({
-      where: { 
-        id: workspaceId,
-        organizationId: organizationId
+    // Verify workspace exists if provided
+    if (workspaceId) {
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId }
+      })
+      if (!workspace) {
+        return NextResponse.json({ error: "Invalid workspace" }, { status: 400 })
       }
-    })
-    if (!workspace) {
-      return NextResponse.json({ error: "Invalid workspace or workspace does not belong to the selected organization" }, { status: 400 })
     }
 
     // Validate role
@@ -123,8 +103,7 @@ export async function POST(request: NextRequest) {
         email,
         password: hashedPassword,
         role: role || "MEMBER",
-        organizationId: organizationId,
-        workspaceId: workspaceId
+        workspaceId: workspaceId || null
       },
       select: {
         id: true,
@@ -133,12 +112,6 @@ export async function POST(request: NextRequest) {
         role: true,
         workspaceId: true,
         createdAt: true,
-        organization: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
         workspace: {
           select: {
             id: true,

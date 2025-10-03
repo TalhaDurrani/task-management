@@ -208,18 +208,33 @@ export class ProjectService {
 
   static async createProject(data: CreateProjectData, userId: string) {
     try {
-      // Get user's workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, }
+        select: { 
+          workspaceId: true,
+          role: true
+        }
       })
 
       if (!user) {
         throw new Error('User not found')
       }
 
-      if (!user.workspaceId ) {
+      // Use the workspaceId from data if provided (for admin creating in any workspace)
+      // Otherwise use user's workspaceId
+      const targetWorkspaceId = data.workspaceId || user.workspaceId
+
+      if (!targetWorkspaceId) {
         throw new Error('User must be assigned to a workspace to create projects. Please contact your administrator.')
+      }
+
+      // Verify workspace exists
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: targetWorkspaceId }
+      })
+
+      if (!workspace) {
+        throw new Error('Workspace not found')
       }
 
       const project = await prisma.project.create({
@@ -230,7 +245,7 @@ export class ProjectService {
           projectDocument: data.projectDocument,
           userId: userId,
           createdBy: userId,
-          workspaceId: user.workspaceId,
+          workspaceId: targetWorkspaceId,
           noOfAssignedUsers: 1
         },
         include: {

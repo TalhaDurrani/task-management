@@ -21,9 +21,8 @@ const createUserSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name is too long"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["USER", "ADMIN", "SUPER_ADMIN"]),
-  organizationId: z.string().min(1, "Organization is required"),
-  workspaceId: z.string().min(1, "Workspace is required")
+  role: z.enum(["MEMBER", "ADMIN"]),
+  workspaceId: z.string().optional()
 })
 
 type CreateUserFormData = z.infer<typeof createUserSchema>
@@ -36,7 +35,6 @@ interface CreateUserDialogProps {
 
 export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUserDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const [organizations, setOrganizations] = useState([])
   const [workspaces, setWorkspaces] = useState([])
 
   const form = useForm<CreateUserFormData>({
@@ -45,26 +43,17 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
       name: "",
       email: "",
       password: "",
-      role: "USER",
-      organizationId: "",
+      role: "MEMBER",
       workspaceId: ""
     }
   })
 
-  // Load organizations and workspaces when dialog opens
+  // Load workspaces when dialog opens
   useEffect(() => {
     if (open) {
       const loadData = async () => {
         try {
-          const [orgsResponse, workspacesResponse] = await Promise.all([
-            fetch('/api/organizations'),
-            fetch('/api/workspaces')
-          ])
-
-          if (orgsResponse.ok) {
-            const orgsData = await orgsResponse.json()
-            setOrganizations(orgsData)
-          }
+          const workspacesResponse = await fetch('/api/workspaces')
 
           if (workspacesResponse.ok) {
             const workspacesData = await workspacesResponse.json()
@@ -101,7 +90,7 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
       onUserCreated()
     } catch (error) {
       console.error("Error creating user:", error)
-      toast.error(`Failed to create user: ${error.message}`)
+      toast.error(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsLoading(false)
     }
@@ -113,7 +102,7 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
         <DialogHeader>
           <DialogTitle>Create New User</DialogTitle>
           <DialogDescription>
-            Add a new user to the system. Organization and workspace assignment is required.
+            Add a new user to the system. Workspace assignment is optional.
           </DialogDescription>
         </DialogHeader>
 
@@ -163,32 +152,12 @@ export function CreateUserDialog({ open, onOpenChange, onUserCreated }: CreateUs
                 <SelectValue placeholder="Select role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="USER">User</SelectItem>
+                <SelectItem value="MEMBER">Member</SelectItem>
                 <SelectItem value="ADMIN">Admin</SelectItem>
-                <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
               </SelectContent>
             </Select>
             {form.formState.errors.role && (
               <p className="text-sm text-destructive">{form.formState.errors.role.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="organizationId">Organization *</Label>
-            <Select value={form.watch("organizationId")} onValueChange={(value) => form.setValue("organizationId", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select organization" />
-              </SelectTrigger>
-              <SelectContent>
-                {organizations.map((org: any) => (
-                  <SelectItem key={org.id} value={org.id}>
-                    {org.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.organizationId && (
-              <p className="text-sm text-destructive">{form.formState.errors.organizationId.message}</p>
             )}
           </div>
 

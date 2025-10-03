@@ -131,7 +131,7 @@ export default function TeamPage() {
           <CardContent>
             <div className="text-2xl font-bold">{users.length}</div>
             <p className="text-xs text-muted-foreground">
-              {users.filter(u => u.role === "admin").length} admins, {users.filter(u => u.role === "developer").length} developers
+              {users.filter(u => u.role === "ADMIN").length} admins, {users.filter(u => u.role === "MEMBER").length} members
             </p>
           </CardContent>
         </Card>
@@ -238,7 +238,7 @@ export default function TeamPage() {
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-2">
                         <h3 className="text-xl font-semibold">{user.name}</h3>
-                        <Badge variant={user.role === "admin" ? "default" : "secondary"}>
+                        <Badge variant={user.role === "ADMIN" ? "default" : "secondary"}>
                           {user.role}
                         </Badge>
                       </div>

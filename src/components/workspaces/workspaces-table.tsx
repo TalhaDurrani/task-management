@@ -16,13 +16,8 @@ interface Workspace {
   id: string
   name: string
   description: string | null
-  organizationId: string
   createdAt: Date
   updatedAt: Date
-  organization: {
-    id: string
-    name: string
-  }
   _count: {
     users: number
     projects: number
@@ -43,8 +38,7 @@ export function WorkspacesTable({ workspaces, onRefresh }: WorkspacesTableProps)
   const filteredWorkspaces = workspaces.filter(
     (workspace) =>
       workspace.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      workspace.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      workspace.organization.name?.toLowerCase().includes(searchTerm.toLowerCase()),
+      workspace.description?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
@@ -70,7 +64,6 @@ export function WorkspacesTable({ workspaces, onRefresh }: WorkspacesTableProps)
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Organization</TableHead>
               <TableHead>Users</TableHead>
               <TableHead>Projects</TableHead>
               <TableHead>Created</TableHead>
@@ -80,7 +73,7 @@ export function WorkspacesTable({ workspaces, onRefresh }: WorkspacesTableProps)
           <TableBody>
             {filteredWorkspaces.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                   {searchTerm
                     ? "No workspaces found matching your search."
                     : "No workspaces yet. Create your first workspace!"}
@@ -96,9 +89,6 @@ export function WorkspacesTable({ workspaces, onRefresh }: WorkspacesTableProps)
                         <p className="text-sm text-muted-foreground mt-1">{workspace.description}</p>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{workspace.organization.name}</Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center space-x-1">

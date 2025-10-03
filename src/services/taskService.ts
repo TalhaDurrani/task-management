@@ -6,7 +6,7 @@ import { Status, StatusCategory } from '@prisma/client'
 
 // Simple status mapping functions
 const mapStatusToDb = (status: string): 'TODO' | 'IN_PROGRESS' | 'DONE' => {
-  switch (status) {
+  switch (status?.toLowerCase()) {
     case 'todo':
       return 'TODO'
     case 'in-progress':
@@ -18,18 +18,18 @@ const mapStatusToDb = (status: string): 'TODO' | 'IN_PROGRESS' | 'DONE' => {
   }
 }
 
-// const mapStatusFromDb = (status: string): 'todo' | 'in-progress' | 'done' => {
-//   switch (status) {
-//     case 'TODO':
-//       return 'todo'
-//     case 'IN_PROGRESS':
-//       return 'in-progress'
-//     case 'DONE':
-//       return 'done'
-//     default:
-//       return 'todo' // Default fallback
-//   }
-// }
+const mapStatusFromDb = (status: string): 'todo' | 'in-progress' | 'done' => {
+  switch (status?.toUpperCase()) {
+    case 'TODO':
+      return 'todo'
+    case 'IN_PROGRESS':
+      return 'in-progress'
+    case 'DONE':
+      return 'done'
+    default:
+      return 'todo' // Default fallback
+  }
+}
 
 export class TaskService {
   static async getTasks(projectId: string, userId: string) {
@@ -325,7 +325,7 @@ export class TaskService {
         createdBy: task.createdBy,
         completedAt: task.completedAt,
         priority: task.priority.toLowerCase(),
-        status: mapStatusFromDb(task.status),
+        status: mapStatusToDb(task.status),
         dueDate: task.dueDate,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
@@ -487,7 +487,7 @@ export class TaskService {
         id: task.id,
         title: task.title,
         description: task.description,
-        status: mapStatusFromDb(task.status),
+        status: mapStatusToDb(task.status),
         customStatus: task.customStatus,
         statusCategory: task.statusCategory,
         priority: task.priority.toLowerCase(),
@@ -758,7 +758,7 @@ export class TaskService {
         id: updatedTask.id,
         title: updatedTask.title,
         description: updatedTask.description,
-        status: mapStatusFromDb(updatedTask.status), // Convert to lowercase format
+        status: updatedTask.status, // Convert to lowercase format
         customStatus: updatedTask.customStatus,
         statusCategory: updatedTask.statusCategory,
         priority: updatedTask.priority.toLowerCase(),
@@ -896,7 +896,7 @@ export class TaskService {
         id: task.id,
         title: task.title,
         description: task.description,
-        status: mapStatusFromDb(task.status),
+        status: mapStatusToDb(task.status),
         customStatus: task.customStatus,
         statusCategory: task.statusCategory,
         priority: task.priority.toLowerCase(),

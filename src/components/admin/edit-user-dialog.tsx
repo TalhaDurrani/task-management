@@ -21,8 +21,7 @@ const editUserSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name is too long"),
   email: z.string().email("Invalid email address"),
   password: z.string().optional(),
-  role: z.enum(["USER", "ADMIN", "SUPER_ADMIN"]),
-  organizationId: z.string().optional(),
+  role: z.enum(["MEMBER", "ADMIN"]),
   workspaceId: z.string().optional()
 })
 
@@ -32,8 +31,7 @@ interface User {
   id: string
   name: string
   email: string
-  role: "USER" | "ADMIN" | "SUPER_ADMIN"
-  organizationId: string | null
+  role: "MEMBER" | "ADMIN"
   workspaceId: string | null
 }
 
@@ -46,7 +44,6 @@ interface EditUserDialogProps {
 
 export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: EditUserDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const [organizations, setOrganizations] = useState([])
   const [workspaces, setWorkspaces] = useState([])
 
   const form = useForm<EditUserFormData>({
@@ -56,7 +53,6 @@ export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: Edit
       email: user.email,
       password: "",
       role: user.role,
-      organizationId: user.organizationId || "",
       workspaceId: user.workspaceId || ""
     }
   })
@@ -68,25 +64,16 @@ export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: Edit
       email: user.email,
       password: "",
       role: user.role,
-      organizationId: user.organizationId || "",
       workspaceId: user.workspaceId || ""
     })
   }, [user, form])
 
-  // Load organizations and workspaces when dialog opens
+  // Load workspaces when dialog opens
   useEffect(() => {
     if (open) {
       const loadData = async () => {
         try {
-          const [orgsResponse, workspacesResponse] = await Promise.all([
-            fetch('/api/organizations'),
-            fetch('/api/workspaces')
-          ])
-
-          if (orgsResponse.ok) {
-            const orgsData = await orgsResponse.json()
-            setOrganizations(orgsData)
-          }
+          const workspacesResponse = await fetch('/api/workspaces')
 
           if (workspacesResponse.ok) {
             const workspacesData = await workspacesResponse.json()
@@ -108,7 +95,6 @@ export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: Edit
         name: data.name,
         email: data.email,
         role: data.role,
-        organizationId: data.organizationId || null,
         workspaceId: data.workspaceId || null
       }
 
@@ -135,7 +121,7 @@ export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: Edit
       onUserUpdated()
     } catch (error) {
       console.error("Error updating user:", error)
-      toast.error(`Failed to update user: ${error.message}`)
+      toast.error(`Failed to update user: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsLoading(false)
     }
@@ -147,7 +133,7 @@ export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: Edit
         <DialogHeader>
           <DialogTitle>Edit User</DialogTitle>
           <DialogDescription>
-            Update user information, role, and organization assignments.
+            Update user information, role, and workspace assignment.
           </DialogDescription>
         </DialogHeader>
 
@@ -197,31 +183,13 @@ export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: Edit
                 <SelectValue placeholder="Select role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="USER">User</SelectItem>
+                <SelectItem value="MEMBER">Member</SelectItem>
                 <SelectItem value="ADMIN">Admin</SelectItem>
-                <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
               </SelectContent>
             </Select>
             {form.formState.errors.role && (
               <p className="text-sm text-destructive">{form.formState.errors.role.message}</p>
             )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="organizationId">Organization</Label>
-            <Select value={form.watch("organizationId") || "none"} onValueChange={(value) => form.setValue("organizationId", value === "none" ? "" : value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select organization" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No organization</SelectItem>
-                {organizations.map((org: any) => (
-                  <SelectItem key={org.id} value={org.id}>
-                    {org.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <div className="space-y-2">

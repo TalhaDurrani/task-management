@@ -36,13 +36,8 @@ interface User {
   id: string
   name: string
   email: string
-  role: "USER" | "ADMIN" | "SUPER_ADMIN"
-  organizationId: string | null
+  role: "MEMBER" | "ADMIN"
   workspaceId: string | null
-  organization?: {
-    id: string
-    name: string
-  } | null
   workspace?: {
     id: string
     name: string
@@ -66,11 +61,9 @@ export function UserManagementTable({ users, onRefresh }: UserManagementTablePro
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
-      case "SUPER_ADMIN":
-        return "destructive"
       case "ADMIN":
         return "default"
-      case "USER":
+      case "MEMBER":
         return "secondary"
       default:
         return "outline"
@@ -79,11 +72,9 @@ export function UserManagementTable({ users, onRefresh }: UserManagementTablePro
 
   const getRoleIcon = (role: string) => {
     switch (role) {
-      case "SUPER_ADMIN":
-        return <Shield className="h-3 w-3" />
       case "ADMIN":
-        return <Building2 className="h-3 w-3" />
-      case "USER":
+        return <Shield className="h-3 w-3" />
+      case "MEMBER":
         return <Users className="h-3 w-3" />
       default:
         return <Users className="h-3 w-3" />
@@ -97,7 +88,7 @@ export function UserManagementTable({ users, onRefresh }: UserManagementTablePro
           <div>
             <h2 className="text-2xl font-bold tracking-tight">User Management</h2>
             <p className="text-muted-foreground">
-              Manage users, roles, and permissions across all organizations
+              Manage users, roles, and workspace assignments
             </p>
           </div>
           <Button onClick={() => setCreatingUser(true)}>
@@ -112,7 +103,6 @@ export function UserManagementTable({ users, onRefresh }: UserManagementTablePro
               <TableRow>
                 <TableHead>User</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Organization</TableHead>
                 <TableHead>Workspace</TableHead>
                 <TableHead>Projects</TableHead>
                 <TableHead>Tasks</TableHead>
@@ -142,16 +132,6 @@ export function UserManagementTable({ users, onRefresh }: UserManagementTablePro
                       {getRoleIcon(user.role)}
                       {user.role.replace('_', ' ')}
                     </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {user.organization ? (
-                      <div className="flex items-center space-x-2">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        <span>{user.organization.name}</span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">Not assigned</span>
-                    )}
                   </TableCell>
                   <TableCell>
                     {user.workspace ? (

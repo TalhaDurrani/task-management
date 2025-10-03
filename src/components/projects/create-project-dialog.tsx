@@ -31,11 +31,23 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>
 
 interface CreateProjectDialogProps {
-  children: React.ReactNode
+  children?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onProjectCreated?: () => void
+  workspaceId?: string
 }
 
-export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
-  const [open, setOpen] = useState(false)
+export function CreateProjectDialog({ 
+  children, 
+  open: controlledOpen, 
+  onOpenChange, 
+  onProjectCreated,
+  workspaceId 
+}: CreateProjectDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setOpen = onOpenChange || setInternalOpen
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
@@ -57,7 +69,10 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          workspaceId,
+        }),
       })
 
       if (!response.ok) {
@@ -73,8 +88,13 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
 
       setOpen(false)
       form.reset()
-      router.refresh()
-      router.push(`/dashboard/projects/${project.id}`)
+      
+      if (onProjectCreated) {
+        onProjectCreated()
+      } else {
+        router.refresh()
+        router.push(`/dashboard/projects/${project.id}`)
+      }
     } catch (error) {
       toast({
         title: "Error",
@@ -88,7 +108,7 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+      {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Create New Project</DialogTitle>

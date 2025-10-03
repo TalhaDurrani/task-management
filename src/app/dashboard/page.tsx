@@ -99,9 +99,8 @@ export default function DashboardPage() {
         <p className="text-muted-foreground">
           Welcome back, {currentUser.name}! Here's what's happening with your projects.
         </p>
-        {currentUser.organization && currentUser.workspace && (
+        {currentUser.workspace && (
           <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
-            <span>Organization: <span className="font-medium">{currentUser.organization.name}</span></span>
             <span>Workspace: <span className="font-medium">{currentUser.workspace.name}</span></span>
           </div>
         )}
