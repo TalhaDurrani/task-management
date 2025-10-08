@@ -678,8 +678,17 @@ export function TasksListView({
         return updatedTasks;
       });
 
-      // Trigger callback if provided
+      // Trigger callbacks if provided
+      // Call onTaskStatusChange if provided (for backward compatibility)
       onTaskStatusChange?.(taskId, result.status);
+      
+      // Call onTaskMove to trigger parent refresh (pass the UI-normalized status)
+      if (onTaskMove) {
+        // Since we already made the API call and updated local state,
+        // we just need to notify parent to refresh its data
+        onTaskMove(taskId, normalizedStatus);
+      }
+      
       console.log("✅ Status update completed successfully");
 
       // Brief refresh indication

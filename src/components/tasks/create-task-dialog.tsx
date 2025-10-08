@@ -469,21 +469,39 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
                       </Select>
                       
                       {field.value === 'CUSTOM' && (
-                        <FormField
-                          control={form.control}
-                          name="customType"
-                          render={({ field: customTypeField }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Input 
-                                  placeholder="Enter custom type name" 
-                                  {...customTypeField}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                        <div className="space-y-2">
+                          <FormField
+                            control={form.control}
+                            name="customType"
+                            render={({ field: customTypeField }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <Input 
+                                    placeholder="Enter custom type name" 
+                                    {...customTypeField}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const customTypeName = form.getValues('customType')
+                              if (customTypeName && customTypeName.trim()) {
+                                const success = await createCustomType(customTypeName.trim())
+                                if (success) {
+                                  form.setValue('customType', '')
+                                }
+                              }
+                            }}
+                          >
+                            Save Custom Type
+                          </Button>
+                        </div>
                       )}
                     </div>
                     <FormMessage />
@@ -534,21 +552,39 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
                       </Select>
                       
                       {field.value === 'CUSTOM' && (
-                        <FormField
-                          control={form.control}
-                          name="customStatus"
-                          render={({ field: customStatusField }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Input 
-                                  placeholder="Enter custom status name" 
-                                  {...customStatusField}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                        <div className="space-y-2">
+                          <FormField
+                            control={form.control}
+                            name="customStatus"
+                            render={({ field: customStatusField }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <Input 
+                                    placeholder="Enter custom status name" 
+                                    {...customStatusField}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const customStatusName = form.getValues('customStatus')
+                              if (customStatusName && customStatusName.trim()) {
+                                const success = await createCustomStatus(customStatusName.trim())
+                                if (success) {
+                                  form.setValue('customStatus', '')
+                                }
+                              }
+                            }}
+                          >
+                            Save Custom Status
+                          </Button>
+                        </div>
                       )}
                     </div>
                     <FormMessage />

@@ -35,7 +35,7 @@ import {
   LogIn
 } from "lucide-react"
 // Dynamic navigation based on current user
-const getMainNavigation = (currentUser: any, userTaskCount: number = 0) => [
+const getMainNavigation = (currentUser: any, userTaskCount: number = 0, inboxCount: number = 0) => [
   {
     name: "Dashboard",
     href: "/dashboard",
@@ -46,13 +46,13 @@ const getMainNavigation = (currentUser: any, userTaskCount: number = 0) => [
     name: "My Tasks",
     href: "/dashboard/tasks",
     icon: CheckSquare,
-    badge: userTaskCount,
+    badge: userTaskCount > 0 ? userTaskCount : null,
   },
   {
     name: "Inbox",
     href: "/dashboard/inbox",
     icon: MessageSquare,
-    badge: 3,
+    badge: inboxCount > 0 ? inboxCount : null,
   },
 ]
 
@@ -159,55 +159,106 @@ export function Sidebar() {
   const pathname = usePathname()
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [projects, setProjects] = useState<any[]>([])
+  const [workspaces, setWorkspaces] = useState<any[]>([])
+  const [showAllWorkspaces, setShowAllWorkspaces] = useState(false)
   const [userTaskCount, setUserTaskCount] = useState(0)
+  const [inboxCount, setInboxCount] = useState(0)
+  const [projectCount, setProjectCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isCollapsed, setIsCollapsed] = useState(false)
   
   // Load current user and data
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const response = await fetch('/api/auth/login', {
-          method: 'GET'
-        })
-        const result = await response.json()
-        
-        if (result.success && result.user) {
-          setCurrentUser(result.user)
-          
-          // Load projects
-          const projectsResponse = await fetch('/api/projects')
-          if (projectsResponse.ok) {
-            const projectsData = await projectsResponse.json()
-            setProjects(projectsData.slice(0, 5)) // Show first 5 projects
-            
-            // Load user tasks count from all projects
-            let totalUserTasks = 0
-            for (const project of projectsData) {
-              try {
-                const tasksResponse = await fetch(`/api/tasks?projectId=${project.id}`)
-                if (tasksResponse.ok) {
-                  const tasksData = await tasksResponse.json()
-                  const userTasks = tasksData.filter((t: any) => t.assignedTo === result.user.id)
-                  totalUserTasks += userTasks.length
-                }
-              } catch (error) {
-                console.error(`Error loading tasks for project ${project.id}:`, error)
-              }
-            }
-            setUserTaskCount(totalUserTasks)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load sidebar data:', error)
-      }
-      setIsLoading(false)
-    }
-    
     loadData()
   }, [])
+
+  // Refresh data when pathname changes (for project creation)
+  useEffect(() => {
+    if (pathname.includes('/dashboard/projects')) {
+      loadProjects()
+    }
+  }, [pathname])
   
-  const inboxCount = 0 // Will be loaded from notifications API if needed
+  const loadData = async () => {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'GET'
+      })
+      const result = await response.json()
+      
+      if (result.success && result.user) {
+        setCurrentUser(result.user)
+        
+        // Load all data in parallel
+        await Promise.all([
+          loadProjects(),
+          loadWorkspaces(),
+          loadUserTasks(result.user.id),
+          loadInboxCount()
+        ])
+      }
+    } catch (error) {
+      console.error('Failed to load sidebar data:', error)
+    }
+    setIsLoading(false)
+  }
+
+  const loadProjects = async () => {
+    try {
+      const projectsResponse = await fetch('/api/projects')
+      if (projectsResponse.ok) {
+        const projectsData = await projectsResponse.json()
+        setProjects(projectsData)
+        setProjectCount(projectsData.length)
+      }
+    } catch (error) {
+      console.error('Error loading projects:', error)
+    }
+  }
+
+  const loadWorkspaces = async () => {
+    try {
+      const workspacesResponse = await fetch('/api/workspaces')
+      if (workspacesResponse.ok) {
+        const workspacesData = await workspacesResponse.json()
+        setWorkspaces(workspacesData)
+      }
+    } catch (error) {
+      console.error('Error loading workspaces:', error)
+    }
+  }
+
+  const loadUserTasks = async (userId: string) => {
+    try {
+      const tasksResponse = await fetch(`/api/tasks`)
+      if (tasksResponse.ok) {
+        const tasksData = await tasksResponse.json()
+        // Count tasks assigned to current user
+        const userTasks = tasksData.filter((t: any) => 
+          t.assignees?.some((a: any) => a.id === userId)
+        )
+        setUserTaskCount(userTasks.length)
+      }
+    } catch (error) {
+      console.error('Error loading user tasks:', error)
+    }
+  }
+
+  const loadInboxCount = async () => {
+    try {
+      // Load notifications/activity count
+      const activityResponse = await fetch('/api/activity')
+      if (activityResponse.ok) {
+        const activityData = await activityResponse.json()
+        // Count unread activities
+        const unreadCount = activityData.filter((a: any) => !a.read).length
+        setInboxCount(unreadCount)
+      }
+    } catch (error) {
+      console.error('Error loading inbox count:', error)
+      setInboxCount(0)
+    }
+  }
 
   const NavigationSection = ({ title, items, showAddButton = false }: {
     title: string
@@ -312,7 +363,7 @@ export function Sidebar() {
       )}
 
       {/* Quick Actions */}
-      <div className="p-4 border-b border-border">
+      {/* <div className="p-4 border-b border-border">
         {isCollapsed ? (
           <div className="space-y-2">
             {quickActions.map((action) => (
@@ -348,85 +399,209 @@ export function Sidebar() {
             ))}
           </div>
         )}
-      </div>
+      </div> */}
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {/* Main Navigation */}
-        <NavigationSection title="Main" items={getMainNavigation(currentUser, userTaskCount)} />
+        <NavigationSection title="Main" items={getMainNavigation(currentUser, userTaskCount, inboxCount)} />
 
-        {/* Workspaces */}
-        <NavigationSection title="Workspaces" items={workspaceNavigation} />
-
-        {/* Join Workspace Button */}
+        {/* Workspaces Section */}
         {!isCollapsed && (
-          <div className="px-3 mb-6">
-            <JoinWorkspaceDialog>
-              <Button variant="outline" size="sm" className="w-full justify-start h-8">
-                <LogIn className="mr-2 h-4 w-4" />
-                Join Workspace
-              </Button>
-            </JoinWorkspaceDialog>
+          <div className="mb-6">
+            <div className="flex items-center justify-between px-3 mb-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Workspaces
+              </h3>
+              <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                {workspaces.length}
+              </Badge>
+            </div>
+            <div className="space-y-1">
+              {/* Show first 3 workspaces or all if showAllWorkspaces is true */}
+              {(showAllWorkspaces ? workspaces : workspaces.slice(0, 3)).map((workspace) => {
+                // Check if we're on the workspaces page viewing this workspace
+                const isActive = pathname === "/dashboard/workspaces" && 
+                                currentUser?.workspaceId === workspace.id
+                return (
+                  <Button
+                    key={workspace.id}
+                    variant="ghost"
+                    className={cn(
+                      "w-full justify-start h-8 px-3 text-sm font-normal",
+                      isActive && "bg-accent text-accent-foreground font-medium"
+                    )}
+                    asChild
+                  >
+                    <Link href="/dashboard/workspaces">
+                      <Building2 className="mr-3 h-4 w-4" />
+                      <span className="flex-1 text-left truncate">{workspace.name}</span>
+                      {currentUser?.workspaceId === workspace.id && (
+                        <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-xs">
+                          Active
+                        </Badge>
+                      )}
+                    </Link>
+                  </Button>
+                )
+              })}
+              
+              {/* View More / View Less Button */}
+              {workspaces.length > 3 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full h-7 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowAllWorkspaces(!showAllWorkspaces)}
+                >
+                  {showAllWorkspaces ? (
+                    <>
+                      <ChevronLeft className="mr-1 h-3 w-3" />
+                      View Less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronRight className="mr-1 h-3 w-3" />
+                      View More ({workspaces.length - 3})
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Empty State */}
+              {workspaces.length === 0 && (
+                <div className="px-3 py-4 text-center">
+                  <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">No workspaces yet</p>
+                </div>
+              )}
+            </div>
+
+            {/* Join Workspace Button */}
+            <div className="px-3 mt-3">
+              <JoinWorkspaceDialog>
+                <Button variant="outline" size="sm" className="w-full justify-start h-8">
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Join Workspace
+                </Button>
+              </JoinWorkspaceDialog>
+            </div>
+          </div>
+        )}
+
+        {/* Collapsed Workspace Link */}
+        {isCollapsed && (
+          <div className="mb-6">
+            <Button
+              variant="ghost"
+              className={cn(
+                "w-full justify-start h-8 px-2",
+                pathname === "/dashboard/workspaces" && "bg-accent text-accent-foreground font-medium"
+              )}
+              asChild
+              title="Workspaces"
+            >
+              <Link href="/dashboard/workspaces">
+                <Building2 className="h-4 w-4" />
+              </Link>
+            </Button>
           </div>
         )}
 
         {/* Projects */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between px-3 mb-2">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Projects
-            </h3>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-              <Plus className="h-3 w-3" />
-            </Button>
+        {!isCollapsed && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between px-3 mb-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Projects
+              </h3>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" asChild>
+                <Link href="/dashboard/projects?create=true">
+                  <Plus className="h-3 w-3" />
+                </Link>
+              </Button>
+            </div>
+            <div className="space-y-1">
+              <Button
+                variant="ghost"
+                className={cn(
+                  "w-full justify-start h-8 px-3 text-sm font-normal",
+                  pathname === "/dashboard/projects" && "bg-accent text-accent-foreground font-medium"
+                )}
+                asChild
+              >
+                <Link href="/dashboard/projects">
+                  <FolderOpen className="mr-3 h-4 w-4" />
+                  <span className="flex-1 text-left">All Projects</span>
+                  <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-xs">
+                    {projectCount}
+                  </Badge>
+                </Link>
+              </Button>
+              
+              {/* Recent Projects (First 5) */}
+              {projects.slice(0, 5).map((project) => {
+                const projectTasks = project.tasks || []
+                const isActive = pathname === `/dashboard/projects/${project.id}`
+                
+                return (
+                  <Button
+                    key={project.id}
+                    variant="ghost"
+                    className={cn(
+                      "w-full justify-start h-8 px-3 text-sm font-normal pl-6",
+                      isActive && "bg-accent text-accent-foreground font-medium"
+                    )}
+                    asChild
+                  >
+                    <Link href={`/dashboard/projects/${project.id}`}>
+                      <div className="w-2 h-2 rounded-full bg-blue-500 mr-3 flex-shrink-0" />
+                      <span className="flex-1 text-left truncate">{project.title || project.name}</span>
+                      {projectTasks.length > 0 && (
+                        <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-xs">
+                          {projectTasks.length}
+                        </Badge>
+                      )}
+                    </Link>
+                  </Button>
+                )
+              })}
+
+              {/* Empty State */}
+              {projects.length === 0 && (
+                <div className="px-3 py-4 text-center">
+                  <FolderOpen className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground mb-2">No projects yet</p>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/dashboard/projects?create=true">
+                      <Plus className="h-3 w-3 mr-1" />
+                      Create Project
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="space-y-1">
+        )}
+
+        {/* Collapsed Projects Link */}
+        {isCollapsed && (
+          <div className="mb-6">
             <Button
               variant="ghost"
               className={cn(
-                "w-full justify-start h-8 px-3 text-sm font-normal",
-                pathname === "/dashboard/projects" && "bg-accent text-accent-foreground font-medium"
+                "w-full justify-start h-8 px-2",
+                pathname.includes("/dashboard/projects") && "bg-accent text-accent-foreground font-medium"
               )}
               asChild
+              title="Projects"
             >
               <Link href="/dashboard/projects">
-                <FolderOpen className="mr-3 h-4 w-4" />
-                <span className="flex-1 text-left">All Projects</span>
-                <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-xs">
-                  {projects.length}
-                </Badge>
+                <FolderOpen className="h-4 w-4" />
               </Link>
             </Button>
-            
-            {/* Recent Projects */}
-            {projects.map((project) => {
-              const projectTasks = project.tasks || []
-              const isActive = pathname === `/dashboard/projects/${project.id}`
-              
-              return (
-                <Button
-                  key={project.id}
-                  variant="ghost"
-                  className={cn(
-                    "w-full justify-start h-8 px-3 text-sm font-normal ml-4",
-                    isActive && "bg-accent text-accent-foreground font-medium"
-                  )}
-                  asChild
-                >
-                  <Link href={`/dashboard/projects/${project.id}`}>
-                    <div className="w-2 h-2 rounded-full bg-blue-500 mr-3 flex-shrink-0" />
-                    <span className="flex-1 text-left truncate">{project.title || project.name}</span>
-                    {projectTasks.length > 0 && (
-                      <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-xs">
-                        {projectTasks.length}
-                      </Badge>
-                    )}
-                  </Link>
-                </Button>
-              )
-            })}
           </div>
-        </div>
+        )}
 
         {/* Analytics */}
         <NavigationSection title="Analytics" items={analyticsNavigation} />
@@ -496,9 +671,9 @@ export function Sidebar() {
               <p className="text-sm font-medium truncate">{currentUser?.name || "User"}</p>
               <p className="text-xs text-muted-foreground truncate">{currentUser?.email || "user@example.com"}</p>
             </div>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+            {/* <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
               <Settings className="h-4 w-4" />
-            </Button>
+            </Button> */}
           </div>
         )}
       </div>

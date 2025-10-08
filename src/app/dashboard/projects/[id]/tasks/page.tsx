@@ -138,6 +138,39 @@ export default function TasksPage({ params }: TasksPageProps) {
     }
   }
 
+  const handleTaskStatusUpdate = async (taskId: string, newStatus: string) => {
+    try {
+      // Map UI status back to API status
+      const apiStatus = newStatus === 'todo' ? 'TODO' : 
+                       newStatus === 'in-progress' ? 'IN_PROGRESS' : 
+                       newStatus === 'done' ? 'DONE' : 'TODO'
+      
+      console.log(`Updating task ${taskId} to status ${apiStatus}`)
+      
+      // Update task status via API
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: apiStatus
+        })
+      })
+
+      if (response.ok) {
+        console.log('Task status updated successfully')
+        // Refresh tasks after successful update
+        await handleTaskCreated()
+      } else {
+        const error = await response.json()
+        console.error('Failed to update task status:', error)
+      }
+    } catch (error) {
+      console.error('Error updating task status:', error)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -205,21 +238,45 @@ export default function TasksPage({ params }: TasksPageProps) {
         <TabsContent value="kanban">
           <KanbanBoard 
             tasks={tasks} 
-            onTaskMove={(taskId, newStatus) => console.log(`Moving task ${taskId} to ${newStatus}`)}
-            onTaskEdit={(task) => console.log("Edit task:", task)}
-            onTaskDelete={(taskId) => console.log("Delete task:", taskId)}
-            onCreateTask={(status) => console.log(`Creating task with status: ${status}`)}
+            onTaskMove={(taskId, newStatus) => {
+              // Update task status via API and refresh
+              handleTaskStatusUpdate(taskId, newStatus)
+            }}
+            onTaskEdit={(task) => {
+              console.log("Edit task:", task)
+              // Refresh tasks after edit
+              handleTaskCreated()
+            }}
+            onTaskDelete={(taskId) => {
+              console.log("Delete task:", taskId)
+              // Refresh tasks after delete
+              handleTaskCreated()
+            }}
+            onCreateTask={(status) => {
+              console.log(`Creating task with status: ${status}`)
+              // Refresh tasks after create
+              handleTaskCreated()
+            }}
           />
         </TabsContent>
         
         <TabsContent value="list">
           <TasksListView
             tasks={tasks}
-            onTaskEdit={(task) => {}}
-            onTaskDelete={(task) => {}}
+            onTaskEdit={(task) => {
+              // Refresh tasks after edit
+              handleTaskCreated()
+            }}
+            onTaskDelete={(task) => {
+              // Refresh tasks after delete
+              handleTaskCreated()
+            }}
             onTaskMove={(taskId, newStatus) => {
-            handleTaskCreated() // Refresh data when status changes
-          }}
+              // TasksListView already makes the API call in handleStatusChange
+              // We just need to refresh the parent's task list after the update
+              console.log(`List view updated task ${taskId} to ${newStatus}, refreshing...`)
+              handleTaskCreated()
+            }}
             onTaskCreated={handleTaskCreated}
             projectId={params.id}
             enableRealTimeUpdates={true}
