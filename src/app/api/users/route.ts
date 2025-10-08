@@ -10,12 +10,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Only super admins can view all users for management
+    // Only admins can view users
     if (user.role !== 'ADMIN') {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
+    // ✅ PRIVACY FIX: Only return users from the same workspace
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: "User not assigned to workspace" }, { status: 403 })
+    }
+
     const users = await prisma.user.findMany({
+      where: {
+        // Only users from the same workspace
+        workspaceId: user.workspaceId
+      },
       select: {
         id: true,
         name: true,
@@ -69,14 +78,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name, email, and password are required" }, { status: 400 })
     }
 
-    // Verify workspace exists if provided
-    if (workspaceId) {
-      const workspace = await prisma.workspace.findUnique({
-        where: { id: workspaceId }
-      })
-      if (!workspace) {
-        return NextResponse.json({ error: "Invalid workspace" }, { status: 400 })
-      }
+    // ✅ PRIVACY FIX: Admin can only create users in their own workspace
+    const targetWorkspaceId = workspaceId || user.workspaceId
+    
+    if (!targetWorkspaceId) {
+      return NextResponse.json({ error: "Workspace is required" }, { status: 400 })
+    }
+
+    if (targetWorkspaceId !== user.workspaceId) {
+      return NextResponse.json({ error: "Cannot create users in other workspaces" }, { status: 403 })
+    }
+
+    // Verify workspace exists
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: targetWorkspaceId }
+    })
+    if (!workspace) {
+      return NextResponse.json({ error: "Invalid workspace" }, { status: 400 })
     }
 
     // Validate role
@@ -96,39 +114,53 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12)
 
-    // Create user
-    const newUser = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        role: role || "MEMBER",
-        workspaceId: workspaceId || null
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        workspaceId: true,
-        createdAt: true,
-        workspace: {
-          select: {
-            id: true,
-            name: true
+    // Create user and WorkspaceMember in a transaction
+    const newUser = await prisma.$transaction(async (tx) => {
+      // Create user
+      const createdUser = await tx.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          role: role || "MEMBER",
+          workspaceId: targetWorkspaceId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          workspaceId: true,
+          createdAt: true,
+          workspace: {
+            select: {
+              id: true,
+              name: true
+            }
           }
         }
-      }
-    })
+      })
 
-    // Create activity log
-    await prisma.activity.create({
-      data: {
-        userId: user.id,
-        type: 'user_created',
-        title: 'User Created',
-        message: `User "${newUser.name}" was created by ${user.name}`
-      }
+      // Create WorkspaceMember record
+      await tx.workspaceMember.create({
+        data: {
+          userId: createdUser.id,
+          workspaceId: targetWorkspaceId,
+          role: role || "MEMBER" // Same role as User.role
+        }
+      })
+
+      // Create activity log
+      await tx.activity.create({
+        data: {
+          userId: user.id,
+          type: 'user_created',
+          title: 'User Created',
+          message: `User "${createdUser.name}" was created by ${user.name}`
+        }
+      })
+
+      return createdUser
     })
 
     return NextResponse.json(newUser, { status: 201 })

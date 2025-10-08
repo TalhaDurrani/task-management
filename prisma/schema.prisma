@@ -8,41 +8,58 @@ datasource db {
 }
 
 model User {
-  id              String         @id @default(uuid()) @db.Uuid
-  name            String
-  email           String         @unique
-  password        String
-  role            Role           @default(MEMBER)
-  createdAt       DateTime       @default(now())
-  workspaceId     String?        @db.Uuid
-  subTasks        SubTask[]
-  workspace       Workspace?     @relation("WorkspaceMembers", fields: [workspaceId], references: [id])
-  activities      Activity[]
-  attachments     Attachment[]
-  comments        Comment[]
-  projects        Project[]
-  assignedTasks   TaskAssignee[]
-  createdTasks    Task[]         @relation("TaskCreator")
-  timeLogs        TimeLog[]
-  timers          Timer[]
-  ownedWorkspaces Workspace[]    @relation("WorkspaceOwner")
+  id               String             @id @default(uuid()) @db.Uuid
+  name             String
+  email            String             @unique
+  password         String
+  role             Role               @default(MEMBER)
+  createdAt        DateTime           @default(now())
+  workspaceId      String?            @db.Uuid
+  subTasks         SubTask[]
+  workspace        Workspace?         @relation("WorkspaceMembers", fields: [workspaceId], references: [id])
+  activities       Activity[]
+  attachments      Attachment[]
+  comments         Comment[]
+  projects         Project[]
+  assignedTasks    TaskAssignee[]
+  createdTasks     Task[]             @relation("TaskCreator")
+  timeLogs         TimeLog[]
+  timers           Timer[]
+  ownedWorkspaces  Workspace[]        @relation("WorkspaceOwner")
+  workspaceMemberships WorkspaceMember[]
 }
 
 model Workspace {
-  id             String         @id @default(uuid()) @db.Uuid
+  id             String             @id @default(uuid()) @db.Uuid
   name           String
   description    String?
-  ownerId        String         @db.Uuid
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  members        User[]         @relation("WorkspaceMembers")
+  ownerId        String             @db.Uuid
+  joinCode       String             @unique
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  members        User[]             @relation("WorkspaceMembers")
   customFields   CustomField[]
   customStatuses CustomStatus[]
   customTypes    CustomType[]
   projects       Project[]
-  owner          User           @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  taskTemplates  TaskTemplate[]
+  owner          User               @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  workspaceMembers WorkspaceMember[]
 
   @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  workspaceId String    @db.Uuid
+  role        Role      @default(MEMBER)
+  joinedAt    DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@map("workspace_members")
 }
 
 model Project {
@@ -58,6 +75,7 @@ model Project {
   noOfAssignedUsers Int           @default(0)
   workspaceId       String?       @db.Uuid
   customFields      CustomField[]
+  taskTemplates     TaskTemplate[]
   user              User?         @relation(fields: [userId], references: [id])
   workspace         Workspace?    @relation(fields: [workspaceId], references: [id])
   tasks             Task[]
@@ -195,11 +213,19 @@ model CustomField {
   id          String            @id @default(uuid()) @db.Uuid
   name        String
   type        CustomFieldType
-  options     String?
+  description String?
+  options     String?           // JSON array for DROPDOWN, MULTI_SELECT, CHECKBOX options
+  defaultValue String?
+  placeholder String?
   isRequired  Boolean           @default(false)
+  isGlobal    Boolean           @default(false) // Global = available across all projects
+  min         Float?            // For NUMBER, RATING validation
+  max         Float?            // For NUMBER, RATING validation
+  pattern     String?           // Regex pattern for TEXT, EMAIL, URL validation
   workspaceId String?           @db.Uuid
   projectId   String?           @db.Uuid
   createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   project     Project?          @relation(fields: [projectId], references: [id])
   workspace   Workspace?        @relation(fields: [workspaceId], references: [id])
   taskValues  TaskCustomField[]
@@ -246,6 +272,23 @@ model CustomType {
   @@map("custom_types")
 }
 
+model TaskTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  type        String   // Task type (bug, feature, story, etc.)
+  priority    Priority @default(MEDIUM)
+  workspaceId String   @db.Uuid
+  projectId   String?  @db.Uuid
+  templateData String  // JSON with default values, custom fields, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  project     Project?  @relation(fields: [projectId], references: [id])
+
+  @@map("task_templates")
+}
+
 enum Role {
   MEMBER
   ADMIN
@@ -275,5 +318,13 @@ enum CustomFieldType {
   TEXT
   NUMBER
   DROPDOWN
+  MULTI_SELECT
   BOOLEAN
+  DATE
+  USER
+  EMAIL
+  URL
+  TEXTAREA
+  CHECKBOX
+  RATING
 }

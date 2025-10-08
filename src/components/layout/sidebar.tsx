@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { JoinWorkspaceDialog } from "@/components/workspaces/join-workspace-dialog"
 import { 
   LayoutDashboard, 
   FolderOpen, 
@@ -30,7 +31,8 @@ import {
   Code,
   ChevronLeft,
   ChevronRight,
-  Building2
+  Building2,
+  LogIn
 } from "lucide-react"
 // Dynamic navigation based on current user
 const getMainNavigation = (currentUser: any, userTaskCount: number = 0) => [
@@ -121,6 +123,12 @@ const adminNavigation = [
     icon: Shield,
     badge: null,
   },
+  {
+    name: "Custom Fields",
+    href: "/dashboard/custom-fields",
+    icon: Settings,
+    badge: null,
+  },
 ]
 
 const developerNavigation = [
@@ -149,8 +157,8 @@ const quickActions = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const [currentUser, setCurrentUser] = useState(null)
-  const [projects, setProjects] = useState([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [projects, setProjects] = useState<any[]>([])
   const [userTaskCount, setUserTaskCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -180,7 +188,7 @@ export function Sidebar() {
                 const tasksResponse = await fetch(`/api/tasks?projectId=${project.id}`)
                 if (tasksResponse.ok) {
                   const tasksData = await tasksResponse.json()
-                  const userTasks = tasksData.filter(t => t.assignedTo === result.user.id)
+                  const userTasks = tasksData.filter((t: any) => t.assignedTo === result.user.id)
                   totalUserTasks += userTasks.length
                 }
               } catch (error) {
@@ -349,6 +357,18 @@ export function Sidebar() {
 
         {/* Workspaces */}
         <NavigationSection title="Workspaces" items={workspaceNavigation} />
+
+        {/* Join Workspace Button */}
+        {!isCollapsed && (
+          <div className="px-3 mb-6">
+            <JoinWorkspaceDialog>
+              <Button variant="outline" size="sm" className="w-full justify-start h-8">
+                <LogIn className="mr-2 h-4 w-4" />
+                Join Workspace
+              </Button>
+            </JoinWorkspaceDialog>
+          </div>
+        )}
 
         {/* Projects */}
         <div className="mb-6">

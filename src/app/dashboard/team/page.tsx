@@ -28,8 +28,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 export default function TeamPage() {
-  const [currentUser, setCurrentUser] = useState(null)
-  const [users, setUsers] = useState([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [users, setUsers] = useState<any[]>([])
+  const [tasks, setTasks] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 

@@ -149,11 +149,14 @@ export class TaskService {
         title: task.title,
         description: task.description,
         type: task.type || 'task',
+        customType: task.type, // Include custom type
         projectId: task.projectId,
         createdBy: task.createdBy,
         completedAt: task.completedAt,
         priority: task.priority.toLowerCase(),
-        status:task.status,
+        status: task.status,
+        customStatus: task.customStatus, // Include custom status name
+        statusCategory: task.statusCategory, // Include status category
         dueDate: task.dueDate,
         createdAt: task.createdAt,
         creator: task.creator,
@@ -321,11 +324,14 @@ export class TaskService {
         title: task.title,
         description: task.description,
         type: task.type || 'task',
+        customType: task.type, // Include custom type
         projectId: task.projectId,
         createdBy: task.createdBy,
         completedAt: task.completedAt,
         priority: task.priority.toLowerCase(),
         status: mapStatusToDb(task.status),
+        customStatus: task.customStatus, // Include custom status name
+        statusCategory: task.statusCategory, // Include status category
         dueDate: task.dueDate,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
@@ -483,6 +489,68 @@ export class TaskService {
         })
       }
 
+      // Handle custom fields if provided
+      if (data.customFields && data.customFields.length > 0) {
+        // Validate custom fields exist and belong to workspace
+        const fieldIds = data.customFields.map(f => f.fieldId)
+        const validFields = await prisma.customField.findMany({
+          where: {
+            id: { in: fieldIds },
+            workspaceId: user.workspaceId
+          }
+        })
+
+        if (validFields.length !== fieldIds.length) {
+          throw new Error('One or more custom fields are invalid')
+        }
+
+        // Validate required fields
+        const requiredFields = validFields.filter(f => f.isRequired)
+        const providedFieldIds = data.customFields.map(f => f.fieldId)
+        const missingRequired = requiredFields.filter(rf => !providedFieldIds.includes(rf.id))
+        
+        if (missingRequired.length > 0) {
+          throw new Error(`Required fields missing: ${missingRequired.map(f => f.name).join(', ')}`)
+        }
+
+        // Create task custom field values
+        const customFieldValues = data.customFields.map(cf => ({
+          taskId: task.id,
+          customFieldId: cf.fieldId,
+          value: cf.value || null
+        }))
+
+        await prisma.taskCustomField.createMany({
+          data: customFieldValues
+        })
+      }
+
+      // Handle subtasks if provided
+      if (data.subTasks && data.subTasks.length > 0) {
+        await prisma.subTask.createMany({
+          data: data.subTasks.map(st => ({
+            taskId: task.id,
+            title: st.title,
+            description: st.description,
+            completed: false
+          }))
+        })
+      }
+
+      // Handle attachments if provided
+      if (data.attachments && data.attachments.length > 0) {
+        await prisma.attachment.createMany({
+          data: data.attachments.map(att => ({
+            taskId: task.id,
+            fileName: att.fileName,
+            filePath: att.filePath,
+            fileSize: att.fileSize,
+            mimeType: att.mimeType,
+            uploadedBy: userId
+          }))
+        })
+      }
+
       return {
         id: task.id,
         title: task.title,
@@ -492,6 +560,7 @@ export class TaskService {
         statusCategory: task.statusCategory,
         priority: task.priority.toLowerCase(),
         type: task.type,
+        customType: task.type, // Include custom type
         createdAt: task.createdAt,
         completedAt: task.completedAt,
         dueDate: task.dueDate,

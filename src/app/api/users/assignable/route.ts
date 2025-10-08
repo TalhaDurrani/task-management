@@ -9,11 +9,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get users that can be assigned to tasks (same workspace only for proper isolation)
+    // ✅ PRIVACY FIX: Only return users from same workspace
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: "User not assigned to workspace" }, { status: 403 })
+    }
+
     const users = await prisma.user.findMany({
       where: {
-        workspaceId: user.workspaceId,
-        organizationId: user.organizationId
+        workspaceId: user.workspaceId
       },
       select: {
         id: true,

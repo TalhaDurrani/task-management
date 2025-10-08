@@ -4,6 +4,7 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { generateJoinCode } from '@/lib/code-generator'
 
 // Ensure JWT_SECRET is defined
 if (!process.env.JWT_SECRET) {
@@ -72,7 +73,8 @@ export class AuthService {
           data: {
             name: data.workspaceName || `${validatedData.name}'s Workspace`,
             description: 'My workspace',
-            ownerId: user.id
+            ownerId: user.id,
+            joinCode: generateJoinCode()
           } as any
         })
 
@@ -80,6 +82,15 @@ export class AuthService {
         const updatedUser = await tx.user.update({
           where: { id: user.id },
           data: { workspaceId: workspace.id }
+        })
+
+        // Create WorkspaceMember record with ADMIN role
+        await tx.workspaceMember.create({
+          data: {
+            userId: user.id,
+            workspaceId: workspace.id,
+            role: 'ADMIN'
+          }
         })
 
         return { user: updatedUser, workspace }
@@ -204,6 +215,12 @@ export class AuthService {
             id: true,
             name: true,
             description: true
+          }
+        },
+        ownedWorkspaces: {
+          select: {
+            id: true,
+            name: true
           }
         }
       }

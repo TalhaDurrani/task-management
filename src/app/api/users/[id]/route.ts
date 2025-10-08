@@ -10,9 +10,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Only super admins can view individual user details
+    // Only admins can view individual user details
     if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    // ✅ PRIVACY FIX: Ensure user has workspace
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: "User not assigned to workspace" }, { status: 403 })
     }
 
     const targetUser = await prisma.user.findUnique({
@@ -44,6 +49,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
+    // ✅ PRIVACY FIX: Ensure target user is in same workspace
+    if (targetUser.workspaceId !== user.workspaceId) {
+      return NextResponse.json({ error: "Cannot access users from other workspaces" }, { status: 403 })
+    }
+
     return NextResponse.json(targetUser)
   } catch (error) {
     console.error("Error fetching user:", error)
@@ -58,9 +68,24 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Only super admins can update users
+    // Only admins can update users
     if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    // ✅ PRIVACY FIX: Ensure user has workspace
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: "User not assigned to workspace" }, { status: 403 })
+    }
+
+    // ✅ PRIVACY FIX: Verify target user is in same workspace
+    const targetUser = await prisma.user.findUnique({
+      where: { id: params.id },
+      select: { workspaceId: true }
+    })
+
+    if (!targetUser || targetUser.workspaceId !== user.workspaceId) {
+      return NextResponse.json({ error: "Cannot update users from other workspaces" }, { status: 403 })
     }
 
     const body = await request.json()
@@ -85,43 +110,65 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       }
     }
 
+    // ✅ PRIVACY FIX: Prevent changing workspace (users should join workspaces, not be moved)
+    if (workspaceId && workspaceId !== user.workspaceId) {
+      return NextResponse.json({ error: "Cannot move users to other workspaces" }, { status: 403 })
+    }
+
     // Prepare update data
     const updateData: any = {}
     if (name) updateData.name = name
     if (email) updateData.email = email
     if (role) updateData.role = role
-    if (workspaceId !== undefined) updateData.workspaceId = workspaceId
     if (password) {
       updateData.password = await bcrypt.hash(password, 12)
     }
 
-    const updatedUser = await prisma.user.update({
-      where: { id: params.id },
-      data: updateData,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        workspaceId: true,
-        createdAt: true,
-        workspace: {
-          select: {
-            id: true,
-            name: true
+    // Update user and WorkspaceMember in transaction
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id: params.id },
+        data: updateData,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          workspaceId: true,
+          createdAt: true,
+          workspace: {
+            select: {
+              id: true,
+              name: true
+            }
           }
         }
-      }
-    })
+      })
 
-    // Create activity log
-    await prisma.activity.create({
-      data: {
-        userId: user.id,
-        type: 'user_updated',
-        title: 'User Updated',
-        message: `User "${updatedUser.name}" was updated by ${user.name}`
+      // If role is being updated, also update WorkspaceMember role
+      if (role && updated.workspaceId) {
+        await tx.workspaceMember.updateMany({
+          where: {
+            userId: params.id,
+            workspaceId: updated.workspaceId
+          },
+          data: {
+            role: role
+          }
+        })
       }
+
+      // Create activity log
+      await tx.activity.create({
+        data: {
+          userId: user.id,
+          type: 'user_updated',
+          title: 'User Updated',
+          message: `User "${updated.name}" was updated by ${user.name}`
+        }
+      })
+
+      return updated
     })
 
     return NextResponse.json(updatedUser)
@@ -138,9 +185,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Only super admins can delete users
+    // Only admins can delete users
     if (user.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    // ✅ PRIVACY FIX: Ensure user has workspace
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: "User not assigned to workspace" }, { status: 403 })
     }
 
     // Prevent self-deletion
@@ -149,11 +201,17 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     const targetUser = await prisma.user.findUnique({
-      where: { id: params.id }
+      where: { id: params.id },
+      select: { workspaceId: true, name: true }
     })
 
     if (!targetUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    // ✅ PRIVACY FIX: Ensure target user is in same workspace
+    if (targetUser.workspaceId !== user.workspaceId) {
+      return NextResponse.json({ error: "Cannot delete users from other workspaces" }, { status: 403 })
     }
 
     // Delete user (cascade will handle related records)

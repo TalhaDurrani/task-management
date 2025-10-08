@@ -12,15 +12,22 @@ export interface UpdateCommentData {
 export class CommentService {
   static async getComments(taskId: string, userId: string) {
     try {
-      // Check if user has access to the task
+      // ✅ PRIVACY FIX: Get user's workspace
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true }
+      })
+
+      if (!user || !user.workspaceId) {
+        throw new Error('User not found or not assigned to workspace')
+      }
+
+      // Check if user has access to the task (must be in same workspace)
       const task = await prisma.task.findFirst({
         where: {
           id: taskId,
           project: {
-            OR: [
-              { userId: userId },
-              { createdBy: userId }
-            ]
+            workspaceId: user.workspaceId
           }
         }
       })
@@ -65,15 +72,22 @@ export class CommentService {
 
   static async getComment(id: string, userId: string) {
     try {
+      // ✅ PRIVACY FIX: Get user's workspace
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true }
+      })
+
+      if (!user || !user.workspaceId) {
+        throw new Error('User not found or not assigned to workspace')
+      }
+
       const comment = await prisma.comment.findFirst({
         where: {
           id: id,
           task: {
             project: {
-              OR: [
-                { userId: userId },
-                { createdBy: userId }
-              ]
+              workspaceId: user.workspaceId
             }
           }
         },
@@ -89,7 +103,7 @@ export class CommentService {
           task: {
             select: {
               id: true,
-              label: true,
+              title: true,
               project: {
                 select: {
                   id: true,
@@ -123,15 +137,22 @@ export class CommentService {
 
   static async createComment(data: CreateCommentData, userId: string) {
     try {
-      // Check if user has access to the task
+      // ✅ PRIVACY FIX: Get user's workspace
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true }
+      })
+
+      if (!user || !user.workspaceId) {
+        throw new Error('User not found or not assigned to workspace')
+      }
+
+      // Check if user has access to the task (must be in same workspace)
       const task = await prisma.task.findFirst({
         where: {
           id: data.taskId,
           project: {
-            OR: [
-              { userId: userId },
-              { createdBy: userId }
-            ]
+            workspaceId: user.workspaceId
           }
         },
         include: {
@@ -167,7 +188,7 @@ export class CommentService {
           userId: userId,
           type: 'comment_added',
           title: 'Comment Added',
-          message: `Comment added to task "${task.label || 'Untitled'}"`,
+          message: `Comment added to task "${task.title || 'Untitled'}"`,
           taskId: task.id,
           projectId: task.projectId
         }
@@ -190,6 +211,16 @@ export class CommentService {
 
   static async updateComment(id: string, data: UpdateCommentData, userId: string) {
     try {
+      // ✅ PRIVACY FIX: Get user's workspace
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true }
+      })
+
+      if (!user || !user.workspaceId) {
+        throw new Error('User not found or not assigned to workspace')
+      }
+
       // Check if user has access to the comment and is the author
       const existingComment = await prisma.comment.findFirst({
         where: {
@@ -197,10 +228,7 @@ export class CommentService {
           userId: userId,
           task: {
             project: {
-              OR: [
-                { userId: userId },
-                { createdBy: userId }
-              ]
+              workspaceId: user.workspaceId
             }
           }
         },
@@ -213,7 +241,7 @@ export class CommentService {
         }
       })
 
-      if (!existingComment) {
+      if (!existingComment || !existingComment.task) {
         throw new Error('Comment not found or access denied')
       }
 
@@ -240,7 +268,7 @@ export class CommentService {
           userId: userId,
           type: 'comment_updated',
           title: 'Comment Updated',
-          message: `Comment updated on task "${existingComment.task.label || 'Untitled'}"`,
+          message: `Comment updated on task "${existingComment.task.title || 'Untitled'}"`,
           taskId: existingComment.task.id,
           projectId: existingComment.task.projectId
         }
@@ -263,6 +291,16 @@ export class CommentService {
 
   static async deleteComment(id: string, userId: string) {
     try {
+      // ✅ PRIVACY FIX: Get user's workspace
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true }
+      })
+
+      if (!user || !user.workspaceId) {
+        throw new Error('User not found or not assigned to workspace')
+      }
+
       // Check if user has access to the comment and is the author
       const existingComment = await prisma.comment.findFirst({
         where: {
@@ -270,10 +308,7 @@ export class CommentService {
           userId: userId,
           task: {
             project: {
-              OR: [
-                { userId: userId },
-                { createdBy: userId }
-              ]
+              workspaceId: user.workspaceId
             }
           }
         },
@@ -286,7 +321,7 @@ export class CommentService {
         }
       })
 
-      if (!existingComment) {
+      if (!existingComment || !existingComment.task) {
         throw new Error('Comment not found or access denied')
       }
 
@@ -300,7 +335,7 @@ export class CommentService {
           userId: userId,
           type: 'comment_deleted',
           title: 'Comment Deleted',
-          message: `Comment deleted from task "${existingComment.task.label || 'Untitled'}"`,
+          message: `Comment deleted from task "${existingComment.task.title || 'Untitled'}"`,
           taskId: existingComment.task.id,
           projectId: existingComment.task.projectId
         }

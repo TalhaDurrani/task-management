@@ -15,8 +15,19 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
 
-    // Build where clause
-    const where: any = {}
+    // ✅ PRIVACY FIX: Ensure user has workspace
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: "User not assigned to workspace" }, { status: 403 })
+    }
+
+    // Build where clause with workspace filter
+    const where: any = {
+      task: {
+        project: {
+          workspaceId: user.workspaceId
+        }
+      }
+    }
     
     if (taskId) {
       where.taskId = taskId
@@ -88,30 +99,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Task ID and hours spent are required" }, { status: 400 })
     }
 
-    // Check if user has access to the task
+    // ✅ PRIVACY FIX: Ensure user has workspace
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: "User not assigned to workspace" }, { status: 403 })
+    }
+
+    // Check if user has access to the task (must be in same workspace)
     const task = await prisma.task.findFirst({
       where: {
         id: taskId,
-        OR: [
-          { userId: user.id },
-          { assignedTo: user.id },
-          { createdBy: user.id },
-          {
-            project: {
-              OR: [
-                { userId: user.id },
-                { createdBy: user.id },
-                {
-                  workspace: {
-                    users: {
-                      some: { id: user.id }
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        ]
+        project: {
+          workspaceId: user.workspaceId
+        }
       }
     })
 

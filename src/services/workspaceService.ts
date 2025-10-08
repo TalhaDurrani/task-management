@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import { generateJoinCode } from '@/lib/code-generator'
 
 export interface CreateWorkspaceData {
   name: string
@@ -18,21 +19,13 @@ export class WorkspaceService {
         throw new Error('User not found')
       }
 
-      // Admins can see all workspaces
-      // Regular users can only see workspaces they own or are assigned to
-      let whereClause = {}
-      
-      if (user.role === 'ADMIN') {
-        // Admins can see all workspaces
-        whereClause = {}
-      } else {
-        // Regular users can see workspaces they own or are assigned to via workspaceId
-        whereClause = {
-          OR: [
-            { ownerId: userId },
-            { id: user.workspaceId || 'none' }
-          ]
-        }
+      // Users can only see workspaces they own or are members of
+      const whereClause = {
+        OR: [
+          { ownerId: userId },
+          { id: user.workspaceId || 'none' },
+          { members: { some: { id: userId } } }
+        ]
       }
 
       const workspaces = await prisma.workspace.findMany({
@@ -76,7 +69,11 @@ export class WorkspaceService {
       const workspace = await prisma.workspace.findFirst({
         where: {
           id,
-          ...(user.role === 'MEMBER' ? { ownerId: userId } : {})
+          OR: [
+            { ownerId: userId },
+            { id: user.workspaceId || 'none' },
+            { members: { some: { id: userId } } }
+          ]
         },
         include: {
           projects: {
@@ -125,6 +122,7 @@ export class WorkspaceService {
           name: data.name,
           description: data.description,
           ownerId: userId,
+          joinCode: generateJoinCode(),
           members: {
             connect: { id: userId }
           }
@@ -279,21 +277,33 @@ export class WorkspaceService {
         throw new Error('Workspace not found')
       }
 
-      const users = await prisma.user.findMany({
+      // Get workspace members with their workspace-specific roles
+      const workspaceMembers = await prisma.workspaceMember.findMany({
         where: { workspaceId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          createdAt: true
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              createdAt: true
+            }
+          }
         },
         orderBy: {
-          createdAt: 'desc'
+          joinedAt: 'desc'
         }
       })
 
-      return users
+      // Transform to match expected format
+      return workspaceMembers.map(member => ({
+        id: member.user.id,
+        name: member.user.name,
+        email: member.user.email,
+        role: member.role, // This is the workspace-specific role
+        createdAt: member.user.createdAt,
+        joinedAt: member.joinedAt
+      }))
     } catch (error) {
       console.error('Error fetching workspace users:', error)
       throw new Error('Failed to fetch workspace users')
@@ -306,9 +316,19 @@ export class WorkspaceService {
         where: { id: adminUserId }
       })
 
-      if (!admin || admin.role !== 'ADMIN') {
-        throw new Error('Access denied')
+      if (!admin) {
+        throw new Error('Admin user not found')
       }
+
+      // Check if admin has permission (must be ADMIN globally OR workspace admin/owner)
+      const adminMembership = await prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: adminUserId,
+            workspaceId: workspaceId
+          }
+        }
+      })
 
       const workspace = await prisma.workspace.findUnique({
         where: { id: workspaceId }
@@ -316,6 +336,15 @@ export class WorkspaceService {
 
       if (!workspace) {
         throw new Error('Workspace not found')
+      }
+
+      // Admin must be either global ADMIN or workspace ADMIN/owner
+      const isWorkspaceOwner = workspace.ownerId === adminUserId
+      const isWorkspaceAdmin = adminMembership?.role === 'ADMIN'
+      const isGlobalAdmin = admin.role === 'ADMIN'
+
+      if (!isGlobalAdmin && !isWorkspaceAdmin && !isWorkspaceOwner) {
+        throw new Error('Access denied: Only workspace admins or owners can add users')
       }
 
       const user = await prisma.user.findUnique({
@@ -326,15 +355,41 @@ export class WorkspaceService {
         throw new Error('User not found')
       }
 
-      await prisma.user.update({
-        where: { id: userId },
-        data: { workspaceId }
+      // Check if user is already a member of this workspace
+      const existingMembership = await prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: userId,
+            workspaceId: workspaceId
+          }
+        }
       })
+
+      if (existingMembership) {
+        throw new Error('User is already a member of this workspace')
+      }
+
+      // Use transaction to ensure both updates happen atomically
+      await prisma.$transaction([
+        // Update user's current workspaceId
+        prisma.user.update({
+          where: { id: userId },
+          data: { workspaceId }
+        }),
+        // Create WorkspaceMember record with MEMBER role (default)
+        prisma.workspaceMember.create({
+          data: {
+            userId: userId,
+            workspaceId: workspaceId,
+            role: 'MEMBER' // New members always start as MEMBER
+          }
+        })
+      ])
 
       return { success: true }
     } catch (error) {
       console.error('Error adding user to workspace:', error)
-      throw new Error('Failed to add user to workspace')
+      throw error instanceof Error ? error : new Error('Failed to add user to workspace')
     }
   }
 
@@ -344,8 +399,8 @@ export class WorkspaceService {
         where: { id: adminUserId }
       })
 
-      if (!admin || admin.role !== 'ADMIN') {
-        throw new Error('Access denied')
+      if (!admin) {
+        throw new Error('Admin user not found')
       }
 
       const workspace = await prisma.workspace.findUnique({
@@ -356,15 +411,56 @@ export class WorkspaceService {
         throw new Error('Workspace not found')
       }
 
-      await prisma.user.update({
-        where: { id: userId },
-        data: { workspaceId: null }
+      // ✅ PROTECTION: Prevent removing workspace owner
+      if (userId === workspace.ownerId) {
+        throw new Error('Cannot remove workspace owner')
+      }
+
+      // Check admin permissions
+      const adminMembership = await prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: adminUserId,
+            workspaceId: workspaceId
+          }
+        }
       })
+
+      const isWorkspaceOwner = workspace.ownerId === adminUserId
+      const isWorkspaceAdmin = adminMembership?.role === 'ADMIN'
+      const isGlobalAdmin = admin.role === 'ADMIN'
+
+      if (!isGlobalAdmin && !isWorkspaceAdmin && !isWorkspaceOwner) {
+        throw new Error('Access denied: Only workspace admins or owners can remove users')
+      }
+
+      // Remove user from workspace in transaction
+      await prisma.$transaction([
+        // Delete WorkspaceMember record
+        prisma.workspaceMember.delete({
+          where: {
+            userId_workspaceId: {
+              userId: userId,
+              workspaceId: workspaceId
+            }
+          }
+        }),
+        // Clear user's workspaceId if this was their active workspace
+        prisma.user.updateMany({
+          where: {
+            id: userId,
+            workspaceId: workspaceId
+          },
+          data: {
+            workspaceId: null
+          }
+        })
+      ])
 
       return { success: true }
     } catch (error) {
       console.error('Error removing user from workspace:', error)
-      throw new Error('Failed to remove user from workspace')
+      throw error instanceof Error ? error : new Error('Failed to remove user from workspace')
     }
   }
 }

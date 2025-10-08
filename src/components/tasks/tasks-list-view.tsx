@@ -45,7 +45,7 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { CreateTaskDialog } from "./create-task-dialog";
-import { TaskDetailDialog } from "./task-detail-dialog";
+import { ComprehensiveTaskDetailModal } from "./comprehensive-task-detail-modal";
 import { mapStatusToUI } from "@/app/dashboard/projects/[id]/tasks/page";
 
 interface Task {
@@ -1331,11 +1331,16 @@ export function TasksListView({
       </div>
 
       {selectedTask && (
-        <TaskDetailDialog
-          task={selectedTask as any}
+        <ComprehensiveTaskDetailModal
+          taskId={selectedTask.id}
           isOpen={isTaskDetailOpen}
-          onClose={() => setIsTaskDetailOpen(false)}
-          onUpdate={handleTaskUpdate as any}
+          onClose={() => {
+            setIsTaskDetailOpen(false);
+            setSelectedTask(null);
+          }}
+          onUpdate={() => {
+            refreshTasks();
+          }}
         />
       )}
     </>

@@ -29,7 +29,19 @@ export type TaskStatus = TaskStatusObject | TaskStatusString
 
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
 
-export type CustomFieldType = "TEXT" | "NUMBER" | "DROPDOWN" | "BOOLEAN"
+export type CustomFieldType = 
+  | "TEXT" 
+  | "NUMBER" 
+  | "DROPDOWN" 
+  | "MULTI_SELECT" 
+  | "BOOLEAN" 
+  | "DATE" 
+  | "USER" 
+  | "EMAIL" 
+  | "URL" 
+  | "TEXTAREA" 
+  | "CHECKBOX" 
+  | "RATING"
 
 export interface TimeLog {
   id: string
@@ -192,11 +204,19 @@ export interface CustomField {
   id: string
   name: string
   type: CustomFieldType
-  options?: string
+  description?: string
+  options?: string // JSON array for DROPDOWN, MULTI_SELECT, CHECKBOX options
+  defaultValue?: string
+  placeholder?: string
   isRequired: boolean
+  isGlobal: boolean // Global = available across all projects
+  min?: number // For NUMBER, RATING validation
+  max?: number // For NUMBER, RATING validation
+  pattern?: string // Regex pattern for TEXT, EMAIL, URL validation
   workspaceId?: string
   projectId?: string
   createdAt: Date
+  updatedAt: Date
   workspace?: Workspace
   project?: Project
   taskValues: TaskCustomField[]
@@ -222,6 +242,22 @@ export interface Workspace {
   users: User[]
   projects: Project[]
   customFields: CustomField[]
+  taskTemplates?: TaskTemplate[]
+}
+
+export interface TaskTemplate {
+  id: string
+  name: string
+  description?: string
+  type: string
+  priority: TaskPriority
+  workspaceId: string
+  projectId?: string
+  templateData: string // JSON with default values, custom fields, etc.
+  createdAt: Date
+  updatedAt: Date
+  workspace?: Workspace
+  project?: Project
 }
 
 export interface Organization {

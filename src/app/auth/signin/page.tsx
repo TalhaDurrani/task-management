@@ -122,11 +122,11 @@ export default function SignInPage() {
         </form>
 
         <div className="text-center">
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Don&apos;t have an account?{' '}
             <Link 
               href="/auth/register" 
-              className="text-primary hover:underline"
+              className="font-medium text-primary hover:underline"
             >
               Sign Up
             </Link>

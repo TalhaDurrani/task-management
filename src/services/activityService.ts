@@ -3,9 +3,22 @@ import { prisma } from '@/lib/db'
 export class ActivityService {
   static async getActivities(userId: string, limit: number = 50) {
     try {
+      // ✅ PRIVACY FIX: Get user's workspace
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true }
+      })
+
+      if (!user || !user.workspaceId) {
+        throw new Error('User not found or not assigned to workspace')
+      }
+
       const activities = await prisma.activity.findMany({
         where: {
-          userId: userId
+          // Only get activities where the user is from the same workspace
+          user: {
+            workspaceId: user.workspaceId
+          }
         },
         include: {
           user: {
@@ -42,14 +55,21 @@ export class ActivityService {
 
   static async getProjectActivities(projectId: string, userId: string, limit: number = 50) {
     try {
-      // Check if user has access to the project
+      // ✅ PRIVACY FIX: Get user's workspace
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workspaceId: true }
+      })
+
+      if (!user || !user.workspaceId) {
+        throw new Error('User not found or not assigned to workspace')
+      }
+
+      // Check if user has access to the project (must be in same workspace)
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          OR: [
-            { userId: userId },
-            { createdBy: userId }
-          ]
+          workspaceId: user.workspaceId
         }
       })
 

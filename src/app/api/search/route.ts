@@ -18,6 +18,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ results: [] })
     }
 
+    // ✅ PRIVACY FIX: Ensure user has workspace
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: "User not assigned to workspace" }, { status: 403 })
+    }
+
     const searchTerm = query.trim().toLowerCase()
     const results: any = {
       tasks: [],
@@ -25,27 +30,16 @@ export async function GET(request: NextRequest) {
       users: []
     }
 
-    // Search tasks
+    // Search tasks (only from user's workspace)
     if (type === "all" || type === "tasks") {
       const tasks = await prisma.task.findMany({
         where: {
           OR: [
             { title: { contains: searchTerm, mode: "insensitive" } },
-            { description: { contains: searchTerm, mode: "insensitive" } },
-            { label: { contains: searchTerm, mode: "insensitive" } }
+            { description: { contains: searchTerm, mode: "insensitive" } }
           ],
           project: {
-            OR: [
-              { userId: user.id },
-              { createdBy: user.id },
-              { 
-                workspace: {
-                  users: {
-                    some: { id: user.id }
-                  }
-                }
-              }
-            ]
+            workspaceId: user.workspaceId
           }
         },
         include: {
@@ -54,13 +48,6 @@ export async function GET(request: NextRequest) {
               id: true,
               title: true,
               description: true
-            }
-          },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
             }
           }
         },
@@ -76,32 +63,22 @@ export async function GET(request: NextRequest) {
         title: task.title,
         description: task.description,
         status: task.status,
-        project: task.project,
-        assignee: task.user,
+        projectId: task.projectId,
+        projectName: task.project?.title || '',
         createdAt: task.createdAt,
         url: `/dashboard/projects/${task.projectId}/tasks`
       }))
     }
 
-    // Search projects
+    // Search projects (only from user's workspace)
     if (type === "all" || type === "projects") {
       const projects = await prisma.project.findMany({
         where: {
+          workspaceId: user.workspaceId,
           OR: [
             { title: { contains: searchTerm, mode: "insensitive" } },
             { description: { contains: searchTerm, mode: "insensitive" } },
             { projectName: { contains: searchTerm, mode: "insensitive" } }
-          ],
-          OR: [
-            { userId: user.id },
-            { createdBy: user.id },
-            { 
-              workspace: {
-                users: {
-                  some: { id: user.id }
-                }
-              }
-            }
           ]
         },
         include: {
@@ -137,25 +114,17 @@ export async function GET(request: NextRequest) {
       }))
     }
 
-    // Search users (only if user is admin or super admin)
-    if ((type === "all" || type === "users") && (user.role === "ADMIN" || user.role === "ADMIN")) {
+    // Search users (only from same workspace)
+    if ((type === "all" || type === "users") && user.role === "ADMIN") {
       const users = await prisma.user.findMany({
         where: {
+          workspaceId: user.workspaceId,
           OR: [
             { name: { contains: searchTerm, mode: "insensitive" } },
             { email: { contains: searchTerm, mode: "insensitive" } }
-          ],
-          // Only show users from the same organization for regular admins
-          ...(user.role === "ADMIN" ? {
-            } : {})
+          ]
         },
         include: {
-          organization: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
           workspace: {
             select: {
               id: true,
@@ -175,10 +144,9 @@ export async function GET(request: NextRequest) {
         title: user.name,
         description: user.email,
         role: user.role,
-        organization: user.organization,
         workspace: user.workspace,
         createdAt: user.createdAt,
-        url: `/dashboard/admin/users`
+        url: `/dashboard/team`
       }))
     }
 

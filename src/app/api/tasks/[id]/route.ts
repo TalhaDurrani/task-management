@@ -10,43 +10,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Fetch task with comprehensive details
-    const task = await prisma.task.findFirst({
-      where: {
-        id: params.id,
-        project: {
-          workspaceId: user.workspaceId,
-          }
-      },
-      include: {
-        project: { select: { id: true, title: true } },
-        creator: { select: { id: true, name: true, email: true } },
-        assignees: {
-          include: {
-            user: { select: { id: true, name: true, email: true } }
-          }
-        }
-      }
-    })
+    // Use TaskService to get comprehensive task details including custom fields, subtasks, comments, etc.
+    const task = await TaskService.getTask(params.id, user.id)
 
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
-    // Transform and return task data
-    return NextResponse.json({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      status: task.status.toLowerCase(),
-      priority: task.priority.toLowerCase(),
-      type: task.type,
-      createdAt: task.createdAt,
-      completedAt: task.completedAt,
-      project: task.project,
-      creator: task.creator,
-      assignees: task.assignees.map(a => a.user)
-    })
+    // Return task with all details
+    return NextResponse.json(task)
   } catch (error) {
     console.error("Error fetching task:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

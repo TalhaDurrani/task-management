@@ -17,17 +17,22 @@ import {
   UserPlus,
   LayoutGrid,
   Building2,
-  Trash2
+  Trash2,
+  Copy,
+  Check,
+  LogIn
 } from "lucide-react"
 import { CreateWorkspaceDialog } from "@/components/workspaces/create-workspace-dialog"
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
 import { AddUserToWorkspaceDialog } from "@/components/workspaces/add-user-to-workspace-dialog"
+import { JoinWorkspaceDialog } from "@/components/workspaces/join-workspace-dialog"
 import { toast } from "sonner"
 
 interface Workspace {
   id: string
   name: string
   description: string | null
+  joinCode?: string
   createdAt: Date
   updatedAt: Date
   _count: {
@@ -63,6 +68,7 @@ export default function WorkspacesPage() {
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
   const [addUserOpen, setAddUserOpen] = useState(false)
+  const [joinWorkspaceOpen, setJoinWorkspaceOpen] = useState(false)
   const router = useRouter()
 
   const loadWorkspaces = async () => {
@@ -197,10 +203,16 @@ export default function WorkspacesPage() {
             <p className="text-muted-foreground text-center mb-4">
               Create your first workspace to start organizing projects and teams
             </p>
-            <Button onClick={() => setCreateWorkspaceOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Workspace
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setCreateWorkspaceOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Workspace
+              </Button>
+              <Button variant="outline" onClick={() => setJoinWorkspaceOpen(true)}>
+                <LogIn className="h-4 w-4 mr-2" />
+                Join Workspace
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -376,9 +388,34 @@ export default function WorkspacesPage() {
                   </div>
 
                   <Card>
-                    <CardContent className="pt-6">
-                      <p className="text-muted-foreground text-center py-8">
-                        Settings coming soon...
+                    <CardHeader>
+                      <CardTitle>Workspace Join Code</CardTitle>
+                      <CardDescription>
+                        Share this code with team members to let them join this workspace
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center space-x-2">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 p-3 bg-muted rounded-md font-mono text-lg font-semibold">
+                            <span className="flex-1">{selectedWorkspace.joinCode || 'Loading...'}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (selectedWorkspace.joinCode) {
+                                  navigator.clipboard.writeText(selectedWorkspace.joinCode)
+                                  toast.success('Join code copied to clipboard!')
+                                }
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Anyone with this code can join your workspace. Keep it secure!
                       </p>
                     </CardContent>
                   </Card>
@@ -420,6 +457,13 @@ export default function WorkspacesPage() {
           />
         </>
       )}
+
+      {/* Join Workspace Dialog */}
+      <JoinWorkspaceDialog
+        open={joinWorkspaceOpen}
+        onOpenChange={setJoinWorkspaceOpen}
+        onSuccess={loadWorkspaces}
+      />
     </div>
   )
 }
