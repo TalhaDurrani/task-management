@@ -25,7 +25,7 @@ export interface StatusManagementService {
 
 export type TaskStatusString = "TODO" | "IN_PROGRESS" | "DONE"
 
-export type TaskStatus = TaskStatusObject | TaskStatusString
+export type TaskStatus = TaskStatusObject | TaskStatusString | number
 
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
 
@@ -69,12 +69,41 @@ export interface Timer {
   task?: Task
   user?: User
 }
-
 export function processTaskStatus(status: TaskStatus): {
   name: string;
   category: 'not-started' | 'in-progress' | 'completed';
   color?: string;
 } {
+  // Handle numeric status values first
+  if (typeof status === 'number') {
+    switch (status) {
+      case 1:
+        return {
+          name: "To Do",
+          category: "not-started",
+          color: "#6B7280"
+        };
+      case 2:
+        return {
+          name: "In Progress",
+          category: "in-progress",
+          color: "#3B82F6"
+        };
+      case 3:
+        return {
+          name: "Done",
+          category: "completed",
+          color: "#10B981"
+        };
+      default:
+        return {
+          name: "To Do",
+          category: "not-started",
+          color: "#6B7280"
+        };
+    }
+  }
+
   // If it's already an object, return its properties
   if (typeof status === 'object' && status !== null && 'name' in status) {
     return {
@@ -86,33 +115,32 @@ export function processTaskStatus(status: TaskStatus): {
 
   // Handle string-based statuses
   switch(status) {
-    case "TODO": 
-      return { 
-        name: "To Do", 
+    case "TODO":
+      return {
+        name: "To Do",
         category: "not-started",
         color: "#6B7280"
       };
-    case "IN_PROGRESS": 
-      return { 
-        name: "In Progress", 
+    case "IN_PROGRESS":
+      return {
+        name: "In Progress",
         category: "in-progress",
         color: "#3B82F6"
       };
-    case "DONE": 
-      return { 
-        name: "Done", 
+    case "DONE":
+      return {
+        name: "Done",
         category: "completed",
         color: "#10B981"
       };
-    default: 
-      return { 
-        name: String(status), 
-        category: "not-started" 
+    default:
+      return {
+        name: String(status),
+        category: "not-started"
       };
   }
 }
 
-// Utility function to get badge variant
 export function getStatusBadgeVariant(status: TaskStatus): "default" | "secondary" | "outline" {
   const processedStatus = processTaskStatus(status);
   

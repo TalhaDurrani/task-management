@@ -46,13 +46,13 @@ import {
 } from "@/components/ui/command";
 import { CreateTaskDialog } from "./create-task-dialog";
 import { ComprehensiveTaskDetailModal } from "./comprehensive-task-detail-modal";
-import { mapStatusToUI } from "@/app/dashboard/projects/[id]/tasks/page";
+import { getStatusColor, getStatusLabel, normalizeStatusForAPI, normalizeStatusFromAPI, getNumericStatus } from "@/lib/status-utils";
 
 interface Task {
   id: string;
   title: string;
   description?: string;
-  status: "todo" | "in-progress" | "done";
+  status: number | string | { name: string } | null;
   priority: "low" | "medium" | "high" | "critical";
   type?: "bug" | "feature" | "story" | "epic" | "task" | "subtask";
   dueDate?: string;
@@ -165,42 +165,6 @@ export function TasksListView({
   ]);
 
   // Helper functions for styling with dynamic support
-  const getStatusColor = (status: string) => {
-    // First normalize the status to match our API format
-    const normalizedStatus = status?.toUpperCase().replace("-", "_");
-
-    const statusItem = availableStatuses.find(
-      (s: { name: string; color?: string }) => s.name === normalizedStatus
-    );
-    if (statusItem?.color) {
-      // Convert hex color to tailwind-like classes
-      const colorMap: Record<string, string> = {
-        "#GRAY": "text-gray-600 bg-gray-100",
-        "#GREY": "text-gray-600 bg-gray-100",
-        "#BLUE": "text-blue-600 bg-blue-100",
-        "#GREEN": "text-green-600 bg-green-100",
-        "#RED": "text-red-600 bg-red-100",
-        "#YELLOW": "text-yellow-600 bg-yellow-100",
-        "#ORANGE": "text-orange-600 bg-orange-100",
-        "#PURPLE": "text-purple-600 bg-purple-100",
-      };
-      return colorMap[statusItem.color] || "text-gray-600 bg-gray-100";
-    }
-
-    // Fallback to default colors based on normalized status
-    switch (normalizedStatus) {
-      case "TODO":
-        return "text-gray-600 bg-gray-100";
-      case "IN_PROGRESS":
-        return "text-blue-600 bg-blue-100";
-      case "DONE":
-        return "text-green-600 bg-green-100";
-      case "ON_HOLD":
-        return "text-yellow-600 bg-yellow-100";
-      default:
-        return "text-gray-600 bg-gray-100";
-    }
-  };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -256,46 +220,7 @@ export function TasksListView({
     }
   };
 
-  // Helper function to get display text for status
-  const getStatusDisplayText = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case "todo":
-      case "backlog":
-        return "To Do";
-      case "in-progress":
-      case "in_progress":
-      case "inprogress":
-        return "In Progress";
-      case "done":
-      case "completed":
-        return "Done";
-      case "on-hold":
-      case "on_hold":
-      case "onhold":
-        return "On Hold";
-      default:
-        return status || "To Do";
-    }
-  };
 
-  // Helper function to normalize status from API format to UI format
-  const normalizeStatusFromAPI = (
-    apiStatus: string
-  ): "todo" | "in-progress" | "done" => {
-    switch (apiStatus?.toUpperCase()) {
-      case "TODO":
-      case "BACKLOG":
-        return "todo";
-      case "IN_PROGRESS":
-      case "DOING":
-        return "in-progress";
-      case "DONE":
-      case "COMPLETED":
-        return "done";
-      default:
-        return "todo";
-    }
-  };
 
   // Load dynamic types and statuses
   const loadTypesAndStatuses = async () => {
@@ -361,7 +286,7 @@ export function TasksListView({
       // Normalize initial tasks to ensure consistent status format
       const normalizedTasks = initialTasks.map((task) => ({
         ...task,
-        status: normalizeStatusFromAPI(task.status),
+        status: typeof task.status === 'number' ? task.status : getNumericStatus(task.status as string),
       }));
       setTasks(normalizedTasks);
     }
@@ -619,40 +544,26 @@ export function TasksListView({
   };
 
   const handleStatusChange = async (taskId: string, status: string) => {
-    console.log("🔄 Starting status update:", { taskId, status });
-
     const originalTask = tasks.find((t) => t.id === taskId);
     if (!originalTask) {
       console.error("❌ Task not found:", taskId);
       return;
     }
 
-    console.log("📝 Original task status:", originalTask.status);
+    const newStatus = getNumericStatus(status);
+
+    // Optimistically update the UI immediately
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
+        task.id === taskId
+          ? { ...task, status: newStatus }
+          : task
+      )
+    );
 
     try {
-      // Convert UI status to consistent format
-      const normalizeStatusForAPI = (s: string) => {
-        switch (s.toLowerCase().replace(/[-_\s]/g, "")) {
-          case "todo":
-
-          case "backlog":
-          case "notstarted":
-            return "todo";
-          case "inprogress":
-          case "doing":
-          case "active":
-            return "in-progress";
-          case "done":
-          case "completed":
-          case "complete":
-            return "done";
-          default:
-            return s.toLowerCase();
-        }
-      };
-
+      // Normalize status for API call
       const normalizedStatus = normalizeStatusForAPI(status);
-      console.log("📤 Normalized status for API:", status);
 
       // Make API call to update task status
       const response = await fetch(`/api/tasks/${taskId}`, {
@@ -660,7 +571,7 @@ export function TasksListView({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ status: status }),
+        body: JSON.stringify({ status: normalizedStatus }),
       });
 
       if (!response.ok) {
@@ -670,20 +581,15 @@ export function TasksListView({
       }
 
       const result = await response.json();
-      console.log("� API Response received:", result);
+      console.log(`✅ Status update successful for task ${taskId}: ${originalTask.status} -> ${result.status}`);
 
       // Update local state with the response from server
       setTasks((prevTasks) => {
         const updatedTasks = prevTasks.map((task) => {
           if (task.id === taskId) {
-            console.log("✅ Updating task in state:", {
-              taskId,
-              oldStatus: task.status,
-              newStatus: mapStatusToUI(result.status),
-            });
             return {
               ...task,
-              status: mapStatusToUI(result.status), // Use the status returned from API
+              status: typeof result.status === 'number' ? result.status : getNumericStatus(result.status.toString()),
               completedAt: result.completedAt,
               // Update any other fields that might have changed
               ...(result.priority && { priority: result.priority }),
@@ -696,23 +602,27 @@ export function TasksListView({
       });
 
       // Trigger callbacks if provided
-      // Call onTaskStatusChange if provided (for backward compatibility)
-      onTaskStatusChange?.(taskId, result.status);
-      
-      // Call onTaskMove to trigger parent refresh (pass the UI-normalized status)
+      onTaskStatusChange?.(taskId, normalizedStatus);
+
+      // Call onTaskMove to trigger parent refresh
       if (onTaskMove) {
-        // Since we already made the API call and updated local state,
-        // we just need to notify parent to refresh its data
         onTaskMove(taskId, normalizedStatus);
       }
-      
-      console.log("✅ Status update completed successfully");
 
       // Brief refresh indication
       setIsRefreshing(true);
       setTimeout(() => setIsRefreshing(false), 100);
     } catch (error) {
       console.error("💥 Error updating task status:", error);
+
+      // Revert optimistic update on error
+      setTasks((prevTasks) =>
+        prevTasks.map((task) =>
+          task.id === taskId
+            ? { ...task, status: originalTask.status }
+            : task
+        )
+      );
 
       // Optionally show user-friendly error notification
       // toast?.error?.("Failed to update task status. Please try again.")
@@ -838,8 +748,12 @@ export function TasksListView({
       switch (sortBy) {
         case "title":
           return a.title.localeCompare(b.title);
-        case "status":
-          return a.status.localeCompare(b.status);
+        case "status": {
+          // Handle numeric status sorting
+          const aStatus = typeof a.status === 'number' ? a.status : String(a.status);
+          const bStatus = typeof b.status === 'number' ? b.status : String(b.status);
+          return aStatus.toString().localeCompare(bStatus.toString());
+        }
         case "priority":
           return a.priority.localeCompare(b.priority);
         case "dueDate":
@@ -853,8 +767,6 @@ export function TasksListView({
       }
     });
 
-  // console.log("🔍 Filtered and sorted tasks:", filteredAndSortedTasks);
-  // console.log("all task", tasks);
 
   return (
     <>
@@ -934,8 +846,8 @@ export function TasksListView({
                         <SelectContent>
                           <SelectItem value="all">All Status</SelectItem>
                           {availableStatuses.map((status) => (
-                            <SelectItem key={status.name} value={normalizeStatusFromAPI(status.name)}>
-                              {getStatusDisplayText(normalizeStatusFromAPI(status.name))}
+                            <SelectItem key={status.name} value={getNumericStatus(status.name).toString()}>
+                              {getStatusLabel(getNumericStatus(status.name))}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1192,13 +1104,8 @@ export function TasksListView({
                   {/* Status */}
                   <td className="px-4 py-4">
                     <Select
-                      value={task.status}
+                      value={task.status?.toString()}
                       onValueChange={(value) => {
-                        console.log("🎯 Dropdown changed:", {
-                          taskId: task.id,
-                          oldStatus: task.status,
-                          newStatus: value,
-                        });
                         handleStatusChange(task.id, value);
                       }}
                     >
@@ -1209,22 +1116,26 @@ export function TasksListView({
                             task.status
                           )}`}
                         >
-                          {/* {getStatusDisplayText(task.status)} */}
-                          {task.status}
+                          {getStatusLabel(task.status)}
                         </Badge>
                       </SelectTrigger>
                       <SelectContent className="z-50">
-                        {availableStatuses.map((status) => {
-                          // If using workflow statuses, use the title directly, otherwise normalize from API
-                          const statusValue = workflowStatuses ? 
-                            status.name.toLowerCase().replace(/\s+/g, '-') : 
-                            normalizeStatusFromAPI(status.name);
-                          return (
-                            <SelectItem key={status.name} value={statusValue}>
-                              {workflowStatuses ? status.name : getStatusDisplayText(normalizeStatusFromAPI(status.name))}
-                            </SelectItem>
-                          );
-                        })}
+                        <SelectItem value="1">Todo</SelectItem>
+                        <SelectItem value="2">In Progress</SelectItem>
+                        <SelectItem value="3">Done</SelectItem>
+                        {availableStatuses.filter(status =>
+                          !['TODO', 'IN_PROGRESS', 'DONE'].includes(status.name)
+                        ).map((status) => (
+                          <SelectItem key={status.name} value={status.name}>
+                            <div className="flex items-center space-x-2">
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: status.color || '#gray' }}
+                              ></div>
+                              <span>{status.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </td>

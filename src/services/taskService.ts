@@ -2,34 +2,8 @@ import { prisma } from '@/lib/db'
 import type { CreateTaskData, UpdateTaskData } from "@/types"
 import { StatusService } from './statusService'
 import { TypeService } from './typeService'
-import { Status, StatusCategory } from '@prisma/client'
-
-// Simple status mapping functions
-const mapStatusToDb = (status: string): 'TODO' | 'IN_PROGRESS' | 'DONE' => {
-  switch (status?.toLowerCase()) {
-    case 'todo':
-      return 'TODO'
-    case 'in-progress':
-      return 'IN_PROGRESS'
-    case 'done':
-      return 'DONE'
-    default:
-      return 'TODO' // Default fallback
-  }
-}
-
-const mapStatusFromDb = (status: string): 'todo' | 'in-progress' | 'done' => {
-  switch (status?.toUpperCase()) {
-    case 'TODO':
-      return 'todo'
-    case 'IN_PROGRESS':
-      return 'in-progress'
-    case 'DONE':
-      return 'done'
-    default:
-      return 'todo' // Default fallback
-  }
-}
+import { StatusCategory } from '@prisma/client'
+import { getNumericStatus } from '@/lib/status-utils'
 
 export class TaskService {
   static async getTasks(projectId: string, userId: string) {
@@ -154,7 +128,7 @@ export class TaskService {
         createdBy: task.createdBy,
         completedAt: task.completedAt,
         priority: task.priority.toLowerCase(),
-        status: task.status,
+        status: task.status, // Return numeric status directly
         customStatus: task.customStatus, // Include custom status name
         statusCategory: task.statusCategory, // Include status category
         dueDate: task.dueDate,
@@ -329,7 +303,7 @@ export class TaskService {
         createdBy: task.createdBy,
         completedAt: task.completedAt,
         priority: task.priority.toLowerCase(),
-        status: mapStatusToDb(task.status),
+        status: task.status, // Return numeric status directly
         customStatus: task.customStatus, // Include custom status name
         statusCategory: task.statusCategory, // Include status category
         dueDate: task.dueDate,
@@ -415,20 +389,40 @@ export class TaskService {
       let statusCategory: StatusCategory = StatusCategory.BACKLOG
 
       if (data.customStatus && user.workspaceId) {
-        // Convert frontend status category to Prisma enum
-        const prismaStatusCategory = data.statusCategory ? 
-          this.convertStatusCategoryToPrisma(data.statusCategory) : 
-          StatusCategory.BACKLOG
+        // Check if custom status already exists by querying the database directly
+        try {
+          const existingStatus = await prisma.customStatus.findFirst({
+            where: {
+              workspaceId: user.workspaceId,
+              name: {
+                mode: 'insensitive',
+                equals: data.customStatus.trim()
+              }
+            }
+          })
 
-        const createdStatus = await StatusService.createCustomStatus(
-          user.workspaceId, 
-          {
-            name: data.customStatus,
-            category: prismaStatusCategory
+          if (existingStatus) {
+            // Status already exists, just use it
+            customStatus = existingStatus.name
+            statusCategory = existingStatus.category
+          } else {
+            // Create new custom status
+            const createdStatus = await StatusService.createCustomStatus(
+              user.workspaceId,
+              {
+                name: data.customStatus,
+                category: data.statusCategory ?
+                  this.convertStatusCategoryToPrisma(data.statusCategory) :
+                  StatusCategory.BACKLOG
+              }
+            )
+            customStatus = createdStatus.name
+            statusCategory = createdStatus.category
           }
-        )
-        customStatus = createdStatus.name
-        statusCategory = createdStatus.category
+        } catch (error) {
+          console.warn('Could not find or create custom status, proceeding without it:', error)
+          // Continue without custom status if it fails
+        }
       }
 
       // Handle custom type creation if needed
@@ -445,12 +439,14 @@ export class TaskService {
       }
 
       // Handle status conversion properly
-      let taskStatus: Status = 'TODO' // Default
+      let taskStatus: number = 1 // Default to TODO (1)
       if (data.status) {
-        if (typeof data.status === 'string') {
-          taskStatus = mapStatusToDb(data.status)
+        if (typeof data.status === 'number') {
+          taskStatus = data.status
+        } else if (typeof data.status === 'string') {
+          taskStatus = getNumericStatus(data.status)
         } else if (typeof data.status === 'object' && 'name' in data.status) {
-          taskStatus = mapStatusToDb(data.status.name)
+          taskStatus = getNumericStatus(data.status.name)
         }
       }
 
@@ -508,7 +504,7 @@ export class TaskService {
         const requiredFields = validFields.filter(f => f.isRequired)
         const providedFieldIds = data.customFields.map(f => f.fieldId)
         const missingRequired = requiredFields.filter(rf => !providedFieldIds.includes(rf.id))
-        
+
         if (missingRequired.length > 0) {
           throw new Error(`Required fields missing: ${missingRequired.map(f => f.name).join(', ')}`)
         }
@@ -555,7 +551,7 @@ export class TaskService {
         id: task.id,
         title: task.title,
         description: task.description,
-        status: mapStatusToDb(task.status),
+        status: task.status, // Return numeric status directly
         customStatus: task.customStatus,
         statusCategory: task.statusCategory,
         priority: task.priority.toLowerCase(),
@@ -629,27 +625,33 @@ export class TaskService {
 
       // Handle status update with specific conversion
       if (data.status !== undefined) {
-        updateData.status = typeof data.status === 'string' 
-          ? data.status.toUpperCase() as 'TODO' | 'IN_PROGRESS' | 'DONE'
-          : data.status?.name
+        if (typeof data.status === 'number') {
+          updateData.status = data.status
+        } else if (typeof data.status === 'string') {
+          updateData.status = getNumericStatus(data.status)
+        }
 
-        // Set completion timestamp for 'DONE' status
-        updateData.completedAt = updateData.status === 'DONE' 
-          ? new Date() 
+        // Set completion timestamp for 'DONE' status (3)
+        updateData.completedAt = updateData.status === 3
+          ? new Date()
           : null
       }
 
       // Handle priority update
       if (data.priority !== undefined) {
+        console.log(`🔄 [TaskService] Priority update requested for task ${taskId}: ${data.priority}`)
         updateData.priority = typeof data.priority === 'string'
           ? data.priority.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
           : data.priority
+        console.log(`✅ [TaskService] Priority converted to: ${updateData.priority}`)
       }
 
       // Handle due date update
       if (data.dueDate !== undefined) {
         updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null
       }
+
+      console.log(`🔄 [TaskService] Updating task ${taskId} with data:`, JSON.stringify(updateData, null, 2))
 
       // Perform the update
       const updatedTask = await prisma.task.update({
@@ -683,12 +685,17 @@ export class TaskService {
         }
       })
 
+      console.log(`✅ [TaskService] Task ${taskId} updated successfully. DB values:`, {
+        status: updatedTask.status,
+        priority: updatedTask.priority
+      })
+
       // Return transformed task data
       return {
         id: updatedTask.id,
         title: updatedTask.title,
         description: updatedTask.description,
-        status: updatedTask.status.toLowerCase(),
+        status: updatedTask.status, // Return numeric status directly
         priority: updatedTask.priority.toLowerCase(),
         type: updatedTask.type,
         createdAt: updatedTask.createdAt,
@@ -696,22 +703,22 @@ export class TaskService {
         completedAt: updatedTask.completedAt,
         project: updatedTask.project,
         creator: updatedTask.creator,
-        assignees: updatedTask.assignees.map(a => a.user)
+        assignees: updatedTask.assignees.map((a: any) => a.user)
       }
     } catch (error) {
-      console.error('Error in TaskService.updateTask:', error)
+      console.error('❌ [TaskService] Error in updateTask:', error)
       throw error
     }
   }
 
   // Advanced status update method
   static async updateTaskStatus(
-    taskId: string, 
-    newStatus: string, 
+    taskId: string,
+    newStatus: string,
     userId: string,
-    options?: { 
-      customStatus?: string 
-      force?: boolean 
+    options?: {
+      customStatus?: string
+      force?: boolean
     }
   ) {
     try {
@@ -725,26 +732,33 @@ export class TaskService {
         throw new Error('User not assigned to workspace')
       }
 
-      // Convert string status to enum - handle both UI and API formats
-      let statusEnum: Status
-      switch (newStatus.toLowerCase()) {
-        case 'todo':
-        case 'backlog':
-          statusEnum = 'TODO'
-          break
-        case 'in-progress':
-        case 'in_progress':
-        case 'inprogress':
-        case 'doing':
-          statusEnum = 'IN_PROGRESS'
-          break
-        case 'done':
-        case 'completed':
-        case 'complete':
-          statusEnum = 'DONE'
-          break
-        default:
-          statusEnum = newStatus.toUpperCase() as Status || 'TODO'
+      // Convert string status to numeric status
+      let numericStatus: number
+      if (typeof newStatus === 'string') {
+        console.log(`🔄 [TaskService.updateTaskStatus] Received string status: "${newStatus}"`)
+        switch (newStatus.toLowerCase()) {
+          case 'todo':
+            numericStatus = 1
+            break
+          case 'in-progress':
+          case 'in progress':
+            numericStatus = 2
+            break
+          case 'done':
+            numericStatus = 3
+            break
+          default:
+            numericStatus = getNumericStatus(newStatus) || 1
+        }
+        console.log(`🔄 [TaskService.updateTaskStatus] Converted "${newStatus}" to numeric status: ${numericStatus}`)
+      } else if (typeof newStatus === 'number') {
+        // Handle numeric status directly
+        numericStatus = newStatus
+        console.log(`🔄 [TaskService.updateTaskStatus] Received numeric status: ${numericStatus}`)
+      } else {
+        // Fallback for any other type
+        numericStatus = getNumericStatus(String(newStatus)) || 1
+        console.log(`🔄 [TaskService.updateTaskStatus] Converted other type "${newStatus}" to numeric status: ${numericStatus}`)
       }
 
       // Fetch current task with access validation
@@ -755,9 +769,9 @@ export class TaskService {
             workspaceId: user.workspaceId,
             }
         },
-        include: { 
-          assignees: { 
-            include: { user: true } 
+        include: {
+          assignees: {
+            include: { user: true }
           },
           project: { select: { id: true, title: true, description: true } },
           creator: { select: { id: true, name: true, email: true } }
@@ -774,27 +788,20 @@ export class TaskService {
 
       // Validate status transition only if force is explicitly set to false
       if (!shouldForceTransition) {
-        const isValidTransition = StatusService.validateStatusTransition(
-          task.status, 
-          statusEnum
-        )
-
-        if (!isValidTransition) {
-          throw new Error(`Invalid status transition from ${task.status} to ${statusEnum}`)
-        }
+        // Add validation logic here if needed in the future
       }
 
       // Update task with comprehensive status management using transaction
-      console.log(`🔄 Updating task ${taskId} status from ${task.status} to ${statusEnum}`)
-      
+      console.log(`🔄 [TaskService.updateTaskStatus] Updating task ${taskId} status from ${task.status} to ${numericStatus}`)
+
       const result = await prisma.$transaction(async (tx) => {
         const updatedTask = await tx.task.update({
           where: { id: taskId },
           data: {
-            status: statusEnum,
+            status: numericStatus,
             customStatus: options?.customStatus,
-            statusCategory: this.determineStatusCategory(statusEnum),
-            completedAt: statusEnum === 'DONE' ? new Date() : (statusEnum === 'TODO' ? null : task.completedAt)
+            statusCategory: this.determineStatusCategory(numericStatus),
+            completedAt: numericStatus === 3 ? new Date() : (numericStatus === 1 ? null : task.completedAt)
           },
           include: {
             project: { select: { id: true, title: true, description: true } },
@@ -807,19 +814,19 @@ export class TaskService {
           }
         })
 
-        console.log(`✅ Task ${taskId} updated successfully. New status: ${updatedTask.status}`)
-        
+        console.log(`✅ [TaskService.updateTaskStatus] Task ${taskId} updated in transaction. New status: ${updatedTask.status}`)
+
         return updatedTask
       })
-      
+
       // Verify the update was actually saved by querying the database again
       const verificationTask = await prisma.task.findUnique({
         where: { id: taskId },
         select: { id: true, status: true, completedAt: true }
       })
-      
-      console.log(`🔍 Verification query - Task ${taskId} status in DB: ${verificationTask?.status}`)
-      
+
+      console.log(`🔍 [TaskService.updateTaskStatus] Verification - Task ${taskId} status in DB: ${verificationTask?.status}`)
+
       const updatedTask = result
 
       // Return task in UI format - consistent with frontend expectations
@@ -827,7 +834,7 @@ export class TaskService {
         id: updatedTask.id,
         title: updatedTask.title,
         description: updatedTask.description,
-        status: updatedTask.status, // Convert to lowercase format
+        status: updatedTask.status, // Return numeric status directly
         customStatus: updatedTask.customStatus,
         statusCategory: updatedTask.statusCategory,
         priority: updatedTask.priority.toLowerCase(),
@@ -965,7 +972,7 @@ export class TaskService {
         id: task.id,
         title: task.title,
         description: task.description,
-        status: mapStatusToDb(task.status),
+        status: task.status, // Return numeric status directly
         customStatus: task.customStatus,
         statusCategory: task.statusCategory,
         priority: task.priority.toLowerCase(),
@@ -984,23 +991,13 @@ export class TaskService {
     }
   }
 
-  // Determine status category based on status
-  private static determineStatusCategory(status: Status): StatusCategory {
-    const categoryMap = {
-      TODO: StatusCategory.BACKLOG,
-      IN_PROGRESS: StatusCategory.IN_PROGRESS,
-      DONE: StatusCategory.COMPLETED
+  // Determine status category based on numeric status
+  private static determineStatusCategory(status: number): StatusCategory {
+    const categoryMap: { [key: number]: StatusCategory } = {
+      1: StatusCategory.BACKLOG,
+      2: StatusCategory.IN_PROGRESS,
+      3: StatusCategory.COMPLETED
     }
-    return categoryMap[status]
-  }
-
-  // Existing helper method to map status
-  private static mapStatusToDb(status: string): Status {
-    switch (status.toLowerCase()) {
-      case 'todo': return 'TODO'
-      case 'in-progress': return 'IN_PROGRESS'
-      case 'done': return 'DONE'
-      default: return 'TODO'
-    }
+    return categoryMap[status] || StatusCategory.BACKLOG
   }
 }

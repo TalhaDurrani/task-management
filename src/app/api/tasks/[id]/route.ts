@@ -33,22 +33,19 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const body = await request.json()
-    console.log(`🔄 PUT request for task ${params.id}:`, body)
     
     // If status is provided, use specific status update method
-    if (body.status) {
-      console.log(`📝 Updating task ${params.id} status to: ${body.status}`)
+    if (body.status !== undefined) {
       const updatedTask = await TaskService.updateTaskStatus(
         params.id, 
         body.status, 
         user.id,
         { force: true } // Allow all status transitions
       )
-      console.log(`✅ Task ${params.id} updated successfully:`, { id: updatedTask.id, status: updatedTask.status })
       return NextResponse.json(updatedTask)
     }
 
-    // Fallback to general task update
+    // Fallback to general task update (for priority, title, etc.)
     const task = await TaskService.updateTask(params.id, body, user.id)
     return NextResponse.json(task)
   } catch (error) {

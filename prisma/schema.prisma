@@ -93,7 +93,7 @@ model Task {
   type           String?
   dueDate        DateTime?
   priority       Priority          @default(MEDIUM)
-  status         Status            @default(TODO)
+  status         Int               @default(1) // 1=TODO, 2=IN_PROGRESS, 3=DONE
   customStatus   String?
   statusCategory StatusCategory    @default(BACKLOG)
   createdAt      DateTime          @default(now())
@@ -166,7 +166,7 @@ model Timer {
   isActive    Boolean   @default(false)
   createdAt   DateTime  @default(now())
   task        Task?     @relation(fields: [taskId], references: [id])
-  user        User?     @relation(fields: [userId], references: [id])
+  user        User?     @relation(fields: [userId], references: [id]) 
 
   @@map("timers")
 }
@@ -294,12 +294,6 @@ model TaskTemplate {
 enum Role {
   MEMBER
   ADMIN
-}
-
-enum Status {
-  TODO
-  IN_PROGRESS
-  DONE
 }
 
 enum StatusCategory {

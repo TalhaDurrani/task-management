@@ -60,7 +60,7 @@ const formSchema = z.object({
   customType: z.string().optional(),
   projectId: z.string().min(1, "Project is required"),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
-  status: z.string().min(1, "Status is required"),
+  status: z.union([z.string(), z.number()]).refine((val) => val !== "", "Status is required"),
   customStatus: z.string().optional(),
   dueDate: z.date().optional(),
   assignees: z.array(z.string()).optional(),
@@ -340,37 +340,46 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
           setIsLoading(false)
           return
         }
-        data.status = data.customStatus
+        // For custom status, set numeric status and customStatus
+        data.status = 1 // Default to Todo for new custom statuses
+        // data.customStatus is already set to the custom status name
       } else {
-        // Check if the selected status is a custom status (not a default status)
-        const defaultStatuses = ['TODO', 'IN_PROGRESS', 'DONE']
-        const selectedStatus = statuses.find(s => s.name === data.status)
-
-        if (selectedStatus && !defaultStatuses.includes(selectedStatus.name)) {
-          // This is a custom status, map it properly
-          console.log('Mapping custom status:', selectedStatus)
-
-          // Set the appropriate default status based on category
-          if (selectedStatus.category === 'IN_PROGRESS') {
-            data.status = 'IN_PROGRESS'
-          } else if (selectedStatus.category === 'COMPLETED') {
-            data.status = 'DONE'
-          } else {
-            data.status = 'TODO' // Default for BACKLOG or unknown
+        // Handle status conversion for numeric system
+        // If workflow statuses are provided, convert selected status to numeric value
+        if (workflowStatuses && workflowStatuses.length > 0) {
+          // Find the selected workflow status and convert to numeric
+          const selectedWorkflowStatus = workflowStatuses.find(ws => ws.title === data.status)
+          if (selectedWorkflowStatus) {
+            // Convert workflow status title to numeric value
+            if (selectedWorkflowStatus.title === 'Todo' || selectedWorkflowStatus.title.toLowerCase().includes('todo')) {
+              data.status = 1
+            } else if (selectedWorkflowStatus.title === 'In Progress' || selectedWorkflowStatus.title.toLowerCase().includes('progress')) {
+              data.status = 2
+            } else if (selectedWorkflowStatus.title === 'Done' || selectedWorkflowStatus.title.toLowerCase().includes('done')) {
+              data.status = 3
+            } else {
+              data.status = 1 // Default to Todo
+            }
+            data.customStatus = selectedWorkflowStatus.title
           }
-
-          // Set custom status and category
-          data.customStatus = selectedStatus.name
-          data.statusCategory = selectedStatus.category
         } else {
-          // This is a default status, ensure statusCategory is set appropriately
-          const statusCategoryMap: { [key: string]: string } = {
-            'TODO': 'BACKLOG',
-            'IN_PROGRESS': 'IN_PROGRESS',
-            'DONE': 'COMPLETED'
+          // Handle default status conversion for backward compatibility
+          const selectedStatus = statuses.find(s => s.name === data.status)
+          if (selectedStatus) {
+            // Convert status name to numeric value
+            if (selectedStatus.name === 'Todo') {
+              data.status = 1
+            } else if (selectedStatus.name === 'In Progress') {
+              data.status = 2
+            } else if (selectedStatus.name === 'Done') {
+              data.status = 3
+            } else {
+              data.status = 1 // Default to Todo
+            }
+          } else {
+            // Default fallback
+            data.status = 1
           }
-          data.statusCategory = statusCategoryMap[data.status] || 'BACKLOG'
-          data.customStatus = '' // Clear custom status for default statuses
         }
       }
 

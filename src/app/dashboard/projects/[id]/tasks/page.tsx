@@ -22,22 +22,31 @@ import { Plus, ArrowLeft, Clock, List, Table, Circle, AlertCircle, CheckCircle2,
 import Link from "next/link"
 
 export const dynamic = 'force-dynamic'
-
 interface TasksPageProps {
   params: {
     id: string
   }
 }
-export const mapStatusToUI = (apiStatus: string) => {
+export const mapStatusToUI = (apiStatus: string | number) => {
+  // If it's already a number, convert to string format for UI
+  if (typeof apiStatus === 'number') {
     switch (apiStatus) {
-      case 'TODO': return 'todo'
-      case 'PENDING': return 'todo'
-      case 'IN_PROGRESS': return 'in-progress'
-      case 'DONE': return 'done'
-      case 'CANCELLED': return 'todo' // Map cancelled to todo for now
+      case 1: return 'todo'
+      case 2: return 'in-progress'
+      case 3: return 'done'
       default: return 'todo'
     }
-  }  
+  }
+
+  // Handle string status from API
+  switch (apiStatus) {
+    case 'TODO': return 'todo'
+    case 'PENDING': return 'todo'
+    case 'DONE': return 'done'
+    case 'CANCELLED': return 'todo' // Map cancelled to todo for now
+    default: return 'todo'
+  }
+}
 
 // Icon mapping for database storage and retrieval
 const iconMap: Record<string, any> = {
@@ -140,12 +149,10 @@ export default function TasksPage({ params }: TasksPageProps) {
           const tasksResponse = await fetch(`/api/tasks?projectId=${params.id}`)
           if (tasksResponse.ok) {
             const tasksData = await tasksResponse.json()
-            console.log("Raw API tasks data:", tasksData)
             
             // Transform the data for UI components
             const transformedTasks = transformTaskData(tasksData)
             setTasks(transformedTasks)
-            console.log("Transformed tasks:", transformedTasks)
           }
         } else {
           // Redirect to sign-in if not authenticated
@@ -179,17 +186,25 @@ export default function TasksPage({ params }: TasksPageProps) {
     }
   }
 
-  const handleTaskStatusUpdate = async (taskId: string, newStatus: string) => {
+  const handleTaskStatusUpdate = async (taskId: string, newStatus: string | number) => {
     try {
-      // Map UI status back to API status for default statuses
-      let apiStatus = newStatus
-      if (newStatus === 'todo') apiStatus = 'TODO'
-      else if (newStatus === 'in-progress') apiStatus = 'IN_PROGRESS'
-      else if (newStatus === 'done') apiStatus = 'DONE'
-      // For custom statuses, use the status name as-is
-      
-      console.log(`Updating task ${taskId} to status ${apiStatus}`)
-      
+      // Handle both numeric column IDs (from Kanban) and string statuses (from List view)
+      let apiStatus: string | number = newStatus
+
+      // If newStatus is a string representation of a number (from Kanban column ID)
+      if (typeof newStatus === 'string' && /^\d+$/.test(newStatus)) {
+        // Convert column ID (1, 2, 3) to numeric status
+        apiStatus = parseInt(newStatus, 10)
+      }
+      // If newStatus is a string status name (from List view)
+      else if (typeof newStatus === 'string') {
+        // Convert string status to numeric
+        if (newStatus === 'todo' || newStatus === 'TODO') apiStatus = 1
+        else if (newStatus === 'in-progress' || newStatus === 'in_progress' || newStatus === 'IN_PROGRESS') apiStatus = 2
+        else if (newStatus === 'done' || newStatus === 'DONE') apiStatus = 3
+        else apiStatus = 1 // Default fallback
+      }
+
       // Update task status via API
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
@@ -202,9 +217,12 @@ export default function TasksPage({ params }: TasksPageProps) {
       })
 
       if (response.ok) {
-        console.log('Task status updated successfully')
-        // Refresh tasks after successful update
-        await handleTaskCreated()
+        // Instead of calling handleTaskCreated(), directly update the parent's task state
+        setTasks(prevTasks => prevTasks.map(task =>
+          task.id === taskId
+            ? { ...task, status: mapStatusToUI(apiStatus) }
+            : task
+        ))
       } else {
         const error = await response.json()
         console.error('Failed to update task status:', error)
@@ -343,9 +361,9 @@ export default function TasksPage({ params }: TasksPageProps) {
   }
 
   const addCustomWorkflowColumn = async (status: any) => {
-    // Create a column object for the custom status
+    // Create a column object for the custom status with numeric ID
     const newColumn = {
-      id: status.name.toLowerCase().replace(/\s+/g, '-'), // Convert to slug
+      id: status.name === 'Todo' ? 1 : status.name === 'In Progress' ? 2 : status.name === 'Done' ? 3 : 4, // Map to numeric status
       title: status.name,
       color: status.color ? `bg-[${status.color}]` : 'bg-blue-100 dark:bg-blue-900',
       icon: Circle, // Default icon, could be enhanced later
@@ -354,25 +372,25 @@ export default function TasksPage({ params }: TasksPageProps) {
 
     let updatedColumns = [...customWorkflowColumns]
 
-    // If this is the first custom column, include default columns
+    // If this is the first custom column, include default columns with numeric IDs
     if (updatedColumns.length === 0) {
       updatedColumns = [
         {
-          id: "todo",
-          title: "To Do",
+          id: 1,
+          title: "Todo",
           color: "bg-gray-100 dark:bg-gray-800",
           icon: Circle,
           count: 0
         },
         {
-          id: "in-progress",
+          id: 2,
           title: "In Progress",
           color: "bg-yellow-100 dark:bg-yellow-900",
           icon: AlertCircle,
           count: 0
         },
         {
-          id: "done",
+          id: 3,
           title: "Done",
           color: "bg-green-100 dark:bg-green-900",
           icon: CheckCircle2,
@@ -460,7 +478,7 @@ export default function TasksPage({ params }: TasksPageProps) {
       <Tabs defaultValue="kanban" className="space-y-4">
         <TabsList>
           <TabsTrigger value="kanban" className="flex items-center gap-2">
-            Kanban Board
+            Work Flow
           </TabsTrigger>
           <TabsTrigger value="list" className="flex items-center gap-2">
             <Table className="h-4 w-4" />
@@ -477,21 +495,21 @@ export default function TasksPage({ params }: TasksPageProps) {
             tasks={tasks} 
             customColumns={customWorkflowColumns.length > 0 ? customWorkflowColumns : [
               {
-                id: "todo" as const,
-                title: "To Do",
+                id: 1,
+                title: "Todo",
                 color: "bg-gray-100 dark:bg-gray-800",
                 icon: Circle,
                 count: 0
               },
               {
-                id: "in-progress" as const,
-                title: "In Progress", 
+                id: 2,
+                title: "In Progress",
                 color: "bg-yellow-100 dark:bg-yellow-900",
                 icon: AlertCircle,
                 count: 0
               },
               {
-                id: "done" as const,
+                id: 3,
                 title: "Done",
                 color: "bg-green-100 dark:bg-green-900",
                 icon: CheckCircle2,
@@ -503,22 +521,18 @@ export default function TasksPage({ params }: TasksPageProps) {
               handleTaskStatusUpdate(taskId, newStatus)
             }}
             onTaskEdit={(task) => {
-              console.log("Edit task:", task)
               // Refresh tasks after edit
               handleTaskCreated()
             }}
             onTaskDelete={(taskId) => {
-              console.log("Delete task:", taskId)
               // Refresh tasks after delete
               handleTaskCreated()
             }}
             onCreateTask={(status) => {
-              console.log(`Creating task with status: ${status}`)
               // Refresh tasks after create
               handleTaskCreated()
             }}
             onColumnReorder={(columns) => {
-              console.log('Columns reordered:', columns)
               setCustomWorkflowColumns(columns)
               // Auto-save if we have a current workflow
               if (currentWorkflowId) {
@@ -540,10 +554,8 @@ export default function TasksPage({ params }: TasksPageProps) {
               handleTaskCreated()
             }}
             onTaskMove={(taskId, newStatus) => {
-              // TasksListView already makes the API call in handleStatusChange
-              // We just need to refresh the parent's task list after the update
-              console.log(`List view updated task ${taskId} to ${newStatus}, refreshing...`)
-              handleTaskCreated()
+              // Update task status directly in parent state
+              handleTaskStatusUpdate(taskId, newStatus)
             }}
             onTaskCreated={handleTaskCreated}
             projectId={params.id}

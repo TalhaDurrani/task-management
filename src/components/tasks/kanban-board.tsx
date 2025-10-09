@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -20,19 +21,12 @@ import {
   GripVertical,
   Grip
 } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { cn } from "@/lib/utils"
-
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 interface Task {
   id: string
   title: string
   description: string | null
-  status: string // Changed from literal union to string to support custom statuses
+  status: number | string // Changed from literal union to support numeric statuses
   priority: "low" | "medium" | "high" | "critical"
   labels: string[]
   projectId: string
@@ -63,9 +57,9 @@ interface KanbanBoardProps {
   onTaskEdit?: (task: Task) => void
   onTaskDelete?: (taskId: string) => void
   onCreateTask?: (status: string) => void
-  onColumnReorder?: (columns: Array<{id: string, title: string, color: string, icon: any, count: number}>) => void
+  onColumnReorder?: (columns: Array<{id: string | number, title: string, color: string, icon: any, count: number}>) => void
   customColumns?: Array<{
-    id: string
+    id: number
     title: string
     color: string
     icon: any
@@ -99,45 +93,54 @@ const columns = [
 
 export function KanbanBoard({ 
   tasks, 
-  onTaskMove, 
+  onTaskMove,
   onTaskEdit, 
   onTaskDelete, 
   onCreateTask,
   onColumnReorder,
   customColumns 
-}: KanbanBoardProps) {
+}: KanbanBoardProps): JSX.Element {
   const [draggedTask, setDraggedTask] = useState<string | null>(null)
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
-  const [columnOrder, setColumnOrder] = useState<Array<{id: string, title: string, color: string, icon: any, count: number}>>([])
+  const [columnOrder, setColumnOrder] = useState<Array<{id: string | number, title: string, color: string, icon: any, count: number}>>([])
 
-  // Use custom columns if provided, otherwise use default columns
   const activeColumns = customColumns || columns
 
   // Initialize column order
-  useState(() => {
+  useEffect(() => {
     if (activeColumns && activeColumns.length > 0 && columnOrder.length === 0) {
       setColumnOrder([...activeColumns])
     }
-  })
+  }, [activeColumns, columnOrder.length])
 
-  // Update column order when activeColumns changes
-  useEffect(() => {
-    if (activeColumns && activeColumns.length > 0) {
-      setColumnOrder(prev => {
-        // Preserve existing order but add new columns
-        const existingIds = prev.map(col => col.id)
-        const newColumns = activeColumns.filter(col => !existingIds.includes(col.id))
-        return [...prev, ...newColumns]
-      })
-    }
-  }, [activeColumns])
-
-  // Group tasks by status
+  // Group tasks by status (convert string statuses to numeric keys for column matching)
   const tasksByStatus = tasks.reduce((acc, task) => {
-    if (!acc[task.status]) {
-      acc[task.status] = []
+    // Convert status to numeric key for consistent grouping
+    let numericKey: string;
+
+    if (typeof task.status === 'number') {
+      numericKey = task.status.toString();
+    } else if (typeof task.status === 'string') {
+      // Convert string status to numeric equivalent
+      const statusMap: { [key: string]: string } = {
+        'todo': '1',
+        'backlog': '1',
+        'in progress': '2',
+        'in_progress': '2',
+        'inprogress': '2',
+        'doing': '2',
+        'done': '3',
+        'completed': '3'
+      };
+      numericKey = statusMap[task.status.toLowerCase()] || '1';
+    } else {
+      numericKey = '1'; // Default fallback
     }
-    acc[task.status].push(task)
+
+    if (!acc[numericKey]) {
+      acc[numericKey] = []
+    }
+    acc[numericKey].push(task)
     return acc
   }, {} as Record<string, Task[]>)
 
@@ -169,12 +172,18 @@ export function KanbanBoard({
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     setDraggedTask(taskId)
+    setDraggedColumn(null) // Clear any column drag state
     e.dataTransfer.effectAllowed = "move"
+    e.dataTransfer.setData("text/plain", taskId) // Set data to identify it's a task
+    e.stopPropagation() // Prevent column drag from starting
   }
 
-  const handleColumnDragStart = (e: React.DragEvent, columnId: string) => {
-    setDraggedColumn(columnId)
+  const handleColumnDragStart = (e: React.DragEvent, columnId: string | number) => {
+    setDraggedColumn(columnId.toString())
+    setDraggedTask(null) // Clear any task drag state
     e.dataTransfer.effectAllowed = "move"
+    e.dataTransfer.setData("text/plain", `column-${columnId}`)
+    e.stopPropagation()
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -187,21 +196,25 @@ export function KanbanBoard({
     e.dataTransfer.dropEffect = "move"
   }
 
-  const handleDrop = (e: React.DragEvent, status: string) => {
+  const handleDrop = (e: React.DragEvent, status: string | number) => {
     e.preventDefault()
+    e.stopPropagation()
+
     if (draggedTask) {
       onTaskMove?.(draggedTask, status)
       setDraggedTask(null)
     }
   }
 
-  const handleColumnDrop = (e: React.DragEvent, targetColumnId: string) => {
+  const handleColumnDrop = (e: React.DragEvent, targetColumnId: string | number) => {
     e.preventDefault()
-    if (draggedColumn && draggedColumn !== targetColumnId) {
+    e.stopPropagation()
+
+    if (draggedColumn && draggedColumn !== targetColumnId.toString()) {
       const newOrder = [...columnOrder]
-      const draggedIndex = newOrder.findIndex(col => col.id === draggedColumn)
-      const targetIndex = newOrder.findIndex(col => col.id === targetColumnId)
-      
+      const draggedIndex = newOrder.findIndex(col => col.id.toString() === draggedColumn)
+      const targetIndex = newOrder.findIndex(col => col.id.toString() === targetColumnId.toString())
+
       if (draggedIndex !== -1 && targetIndex !== -1) {
         const [removed] = newOrder.splice(draggedIndex, 1)
         newOrder.splice(targetIndex, 0, removed)
@@ -215,23 +228,27 @@ export function KanbanBoard({
   return (
     <div className="flex space-x-6 overflow-x-auto pb-6">
       {columnOrder.map((column) => {
-        const columnTasks = tasksByStatus[column.id] || []
+        const columnTasks = tasksByStatus[String(column.id)] || []
         const Icon = column.icon
 
         return (
           <div 
             key={column.id} 
             className="flex-shrink-0 w-80"
-            draggable
-            onDragStart={(e) => handleColumnDragStart(e, column.id)}
-            onDragOver={handleColumnDragOver}
-            onDrop={(e) => handleColumnDrop(e, column.id)}
           >
             <Card className="h-full">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                    <div 
+                      className="cursor-grab active:cursor-grabbing"
+                      draggable
+                      onDragStart={(e) => handleColumnDragStart(e, column.id)}
+                      onDragOver={handleColumnDragOver}
+                      onDrop={(e) => handleColumnDrop(e, column.id)}
+                    >
+                      <GripVertical className="h-4 w-4 text-muted-foreground" />
+                    </div>
                     <div className={cn("p-1.5 rounded-md", column.color)}>
                       <Icon className="h-4 w-4" />
                     </div>

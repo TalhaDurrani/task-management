@@ -16,14 +16,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Project ID is required" }, { status: 400 })
     }
 
-    console.log(`🔍 Fetching tasks for project: ${projectId}, user: ${user.id}`)
     const tasks = await TaskService.getTasks(projectId, user.id)
-    console.log(`📊 Fetched ${tasks.length} tasks`)
-       console.log(`📊\n\n\n\n\n\n\n\nn\\n\n Fetched  tasks`,tasks,"\n\n\n\n\n")
     
     // Log first task status for debugging
     if (tasks.length > 0) {
-      console.log(`📋 Sample task status: ${tasks[0].id} = ${tasks[0].status}`)
+      // console.log(`📋 Sample task status: ${tasks[0].id} = ${tasks[0].status}`)
     }
     
     return NextResponse.json(tasks)
