@@ -57,10 +57,6 @@ export default function CustomFieldsPage() {
   const [statusColor, setStatusColor] = useState("#34D399")
   const [statusCategory, setStatusCategory] = useState("BACKLOG")
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
   const loadData = async () => {
     setIsLoading(true)
     try {
@@ -88,6 +84,7 @@ export default function CustomFieldsPage() {
       const statusesResponse = await fetch(`/api/tasks/status?workspaceId=${workspaceId}`)
       if (statusesResponse.ok) {
         const statusesData = await statusesResponse.json()
+        console.log("Loaded statuses:", statusesData)
         setStatuses(statusesData)
       }
     } catch (error) {
@@ -98,10 +95,52 @@ export default function CustomFieldsPage() {
     }
   }
 
+  useEffect(() => {
+    loadData()
+    
+    // Listen for custom field updates from other components
+    const handleCustomFieldsUpdate = (event: any) => {
+      const { type, action, data } = event.detail
+      console.log('Custom fields update received:', { type, action, data })
+      
+      if (action === 'create') {
+        if (type === 'status') {
+          setStatuses(prev => {
+            // Check if status already exists to avoid duplicates
+            const exists = prev.some(s => s.id === data.id || s.name === data.name)
+            if (!exists) {
+              console.log('Adding new status to UI:', data)
+              return [...prev, data]
+            }
+            return prev
+          })
+        } else if (type === 'type') {
+          setTypes(prev => ({
+            ...prev,
+            custom: prev.custom.some(t => t.id === data.id || t.name === data.name) 
+              ? prev.custom 
+              : [...prev.custom, data]
+          }))
+        }
+      }
+    }
+    
+    window.addEventListener('customFieldsUpdated', handleCustomFieldsUpdate)
+    
+    return () => {
+      window.removeEventListener('customFieldsUpdated', handleCustomFieldsUpdate)
+    }
+  }, [])
+
   // Type management functions
   const handleCreateType = async () => {
     if (!typeName.trim()) {
       toast.error("Type name is required")
+      return
+    }
+
+    if (types.custom.some(t => t.name === typeName)) {
+      toast.error("Type with the same name already exists")
       return
     }
 
@@ -113,10 +152,14 @@ export default function CustomFieldsPage() {
       })
 
       if (response.ok) {
+        const newType = await response.json()
+        setTypes(prev => ({
+          ...prev,
+          custom: [...prev.custom, newType]
+        }))
         toast.success("Custom type created successfully")
         setTypeDialogOpen(false)
         resetTypeForm()
-        loadData()
       } else {
         const error = await response.json()
         toast.error(error.error || "Failed to create type")
@@ -138,10 +181,14 @@ export default function CustomFieldsPage() {
       })
 
       if (response.ok) {
+        const updatedType = await response.json()
+        setTypes(prev => ({
+          ...prev,
+          custom: prev.custom.map(t => t.id === updatedType.id ? updatedType : t)
+        }))
         toast.success("Custom type updated successfully")
         setTypeDialogOpen(false)
         resetTypeForm()
-        loadData()
       } else {
         const error = await response.json()
         toast.error(error.error || "Failed to update type")
@@ -163,8 +210,11 @@ export default function CustomFieldsPage() {
       })
 
       if (response.ok) {
+        setTypes(prev => ({
+          ...prev,
+          custom: prev.custom.filter(t => t.id !== typeId)
+        }))
         toast.success("Custom type deleted successfully")
-        loadData()
       } else {
         const error = await response.json()
         toast.error(error.error || "Failed to delete type")
@@ -221,10 +271,12 @@ export default function CustomFieldsPage() {
       })
 
       if (response.ok) {
+        const newStatus = await response.json()
+        console.log("Created new status:", newStatus)
+        setStatuses(prev => [...prev, newStatus])
         toast.success("Custom status created successfully")
         setStatusDialogOpen(false)
         resetStatusForm()
-        loadData()
       } else {
         const error = await response.json()
         toast.error(error.error || "Failed to create status")
@@ -252,12 +304,13 @@ export default function CustomFieldsPage() {
         return
       }
 
+      // All statuses now have IDs since they're created in the database
       const response = await fetch("/api/tasks/status", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          id: editingStatus.id, 
-          name: statusName, 
+        body: JSON.stringify({
+          id: editingStatus.id,
+          name: statusName,
           color: statusColor,
           category: statusCategory,
           workspaceId: workspaceId
@@ -265,10 +318,11 @@ export default function CustomFieldsPage() {
       })
 
       if (response.ok) {
+        const updatedStatus = await response.json()
+        setStatuses(prev => prev.map(s => s.id === updatedStatus.id ? updatedStatus : s))
         toast.success("Custom status updated successfully")
         setStatusDialogOpen(false)
         resetStatusForm()
-        loadData()
       } else {
         const error = await response.json()
         toast.error(error.error || "Failed to update status")
@@ -280,23 +334,19 @@ export default function CustomFieldsPage() {
   }
 
   const handleDeleteStatus = async (statusId: string | undefined, statusName: string) => {
-    if (!statusId) {
-      toast.error("Cannot delete default status")
-      return
-    }
-
     if (!confirm(`Are you sure you want to delete "${statusName}"? This cannot be undone.`)) {
       return
     }
 
     try {
+      // All statuses now have IDs since they're created in the database
       const response = await fetch(`/api/tasks/status?id=${statusId}`, {
         method: "DELETE",
       })
 
       if (response.ok) {
+        setStatuses(prev => prev.filter(s => s.id !== statusId))
         toast.success("Custom status deleted successfully")
-        loadData()
       } else {
         const error = await response.json()
         toast.error(error.error || "Failed to delete status")
@@ -593,7 +643,11 @@ export default function CustomFieldsPage() {
               <div className="space-y-4">
                 {/* Group statuses by category */}
                 {["BACKLOG", "IN_PROGRESS", "COMPLETED", "ON_HOLD"].map((category) => {
-                  const categoryStatuses = statuses.filter((s) => s.category === category)
+                  const categoryStatuses = statuses.filter((s) => {
+                    console.log(`Filtering status ${s.name} with category ${s.category} against ${category}`)
+                    return s.category === category
+                  })
+                  console.log(`Category ${category} has ${categoryStatuses.length} statuses:`, categoryStatuses)
                   if (categoryStatuses.length === 0) return null
 
                   return (

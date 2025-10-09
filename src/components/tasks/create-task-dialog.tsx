@@ -226,6 +226,14 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
         const newType = await response.json()
         setTypes(prev => [...prev, newType])
         form.setValue('type', newType.name)
+        
+        // Notify parent component that custom fields were updated
+        if (window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('customFieldsUpdated', { 
+            detail: { type: 'type', action: 'create', data: newType } 
+          }))
+        }
+        
         return true
       }
     } catch (error) {
@@ -249,8 +257,25 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
 
       if (response.ok) {
         const newStatus = await response.json()
-        setStatuses(prev => [...prev, newStatus])
+        console.log("Created custom status:", newStatus)
+        console.log("Current statuses before update:", statuses)
+        
+        setStatuses(prev => {
+          const updated = [...prev, newStatus]
+          console.log("Updated statuses array:", updated)
+          return updated
+        })
+        
         form.setValue('status', newStatus.name)
+        console.log("Set form value to:", newStatus.name)
+        
+        // Notify parent component that custom fields were updated
+        if (window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('customFieldsUpdated', { 
+            detail: { type: 'status', action: 'create', data: newStatus } 
+          }))
+        }
+        
         return true
       }
     } catch (error) {
@@ -300,7 +325,40 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
           return
         }
         data.status = data.customStatus
+      } else {
+        // Check if the selected status is a custom status (not a default status)
+        const defaultStatuses = ['TODO', 'IN_PROGRESS', 'DONE']
+        const selectedStatus = statuses.find(s => s.name === data.status)
+
+        if (selectedStatus && !defaultStatuses.includes(selectedStatus.name)) {
+          // This is a custom status, map it properly
+          console.log('Mapping custom status:', selectedStatus)
+
+          // Set the appropriate default status based on category
+          if (selectedStatus.category === 'IN_PROGRESS') {
+            data.status = 'IN_PROGRESS'
+          } else if (selectedStatus.category === 'COMPLETED') {
+            data.status = 'DONE'
+          } else {
+            data.status = 'TODO' // Default for BACKLOG or unknown
+          }
+
+          // Set custom status and category
+          data.customStatus = selectedStatus.name
+          data.statusCategory = selectedStatus.category
+        } else {
+          // This is a default status, ensure statusCategory is set appropriately
+          const statusCategoryMap: { [key: string]: string } = {
+            'TODO': 'BACKLOG',
+            'IN_PROGRESS': 'IN_PROGRESS',
+            'DONE': 'COMPLETED'
+          }
+          data.statusCategory = statusCategoryMap[data.status] || 'BACKLOG'
+          data.customStatus = '' // Clear custom status for default statuses
+        }
       }
+
+      console.log('Final task data being sent:', data)
 
       const response = await fetch("/api/tasks", {
         method: "POST",
@@ -517,6 +575,7 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
                     <FormLabel>Status</FormLabel>
                     <div className="space-y-2">
                       <Select 
+                        key={`status-select-${statuses.length}`}
                         onValueChange={(value) => {
                           field.onChange(value)
                           if (value !== 'CUSTOM') {

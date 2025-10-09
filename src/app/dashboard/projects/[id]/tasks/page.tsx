@@ -10,7 +10,7 @@ import { TimerWidget } from "@/components/timer/timer-widget"
 import { TimeLogsList } from "@/components/timer/time-logs-list"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, ArrowLeft, Clock, List, Table } from "lucide-react"
+import { Plus, ArrowLeft, Clock, List, Table, Circle, AlertCircle, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 
 interface TasksPageProps {
@@ -34,6 +34,12 @@ export default function TasksPage({ params }: TasksPageProps) {
   const [project, setProject] = useState<any>(null)
   const [tasks, setTasks] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [customStatuses, setCustomStatuses] = useState<any[]>([])
+  const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
+  const [customWorkflowColumns, setCustomWorkflowColumns] = useState<any[]>([])
+  const [savedWorkflows, setSavedWorkflows] = useState<any[]>([])
+  const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null)
+  const [workflowManagerOpen, setWorkflowManagerOpen] = useState(false)
   const router = useRouter()
 
   // Transform API task data to UI format
@@ -140,10 +146,12 @@ export default function TasksPage({ params }: TasksPageProps) {
 
   const handleTaskStatusUpdate = async (taskId: string, newStatus: string) => {
     try {
-      // Map UI status back to API status
-      const apiStatus = newStatus === 'todo' ? 'TODO' : 
-                       newStatus === 'in-progress' ? 'IN_PROGRESS' : 
-                       newStatus === 'done' ? 'DONE' : 'TODO'
+      // Map UI status back to API status for default statuses
+      let apiStatus = newStatus
+      if (newStatus === 'todo') apiStatus = 'TODO'
+      else if (newStatus === 'in-progress') apiStatus = 'IN_PROGRESS'
+      else if (newStatus === 'done') apiStatus = 'DONE'
+      // For custom statuses, use the status name as-is
       
       console.log(`Updating task ${taskId} to status ${apiStatus}`)
       
@@ -169,6 +177,74 @@ export default function TasksPage({ params }: TasksPageProps) {
     } catch (error) {
       console.error('Error updating task status:', error)
     }
+  }
+
+  // Load saved workflows on mount
+  useEffect(() => {
+    if (currentUser) {
+      loadSavedWorkflows()
+    }
+  }, [currentUser, params.id])
+
+  const loadSavedWorkflows = async () => {
+    try {
+      const response = await fetch(`/api/workflows?projectId=${params.id}`)
+      if (response.ok) {
+        const workflows = await response.json()
+        setSavedWorkflows(workflows)
+        
+        // Load default workflow if exists
+        const defaultWorkflow = workflows.find((w: any) => w.isDefault)
+        if (defaultWorkflow && !customWorkflowColumns.length) {
+          setCustomWorkflowColumns(defaultWorkflow.columns)
+          setCurrentWorkflowId(defaultWorkflow.id)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load workflows:', error)
+    }
+  }
+
+  const saveWorkflow = async (name: string, isDefault: boolean = false) => {
+    try {
+      const response = await fetch('/api/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: params.id,
+          name,
+          columns: customWorkflowColumns,
+          isDefault
+        })
+      })
+      
+      if (response.ok) {
+        const savedWorkflow = await response.json()
+        setSavedWorkflows(prev => [savedWorkflow, ...prev])
+        setCurrentWorkflowId(savedWorkflow.id)
+        return savedWorkflow
+      }
+    } catch (error) {
+      console.error('Failed to save workflow:', error)
+      throw error
+    }
+  }
+
+  const updateWorkflow = async (workflowId: string, columns: any[]) => {
+    try {
+      await fetch(`/api/workflows/${workflowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columns })
+      })
+    } catch (error) {
+      console.error('Failed to update workflow:', error)
+    }
+  }
+
+  const loadWorkflow = (workflow: any) => {
+    setCustomWorkflowColumns(workflow.columns)
+    setCurrentWorkflowId(workflow.id)
   }
 
   if (isLoading) {
@@ -211,18 +287,21 @@ export default function TasksPage({ params }: TasksPageProps) {
             <p className="text-muted-foreground">Manage tasks using Kanban board or list view</p>
           </div>
         </div>
-        <CreateTaskDialog projectId={params.id} onTaskCreated={handleTaskCreated}>
-          <Button>
+        <div className="flex justify-end gap-2 mb-4">
+          <Button onClick={() => setWorkflowDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            New Task
+            Create Work Flow
           </Button>
-        </CreateTaskDialog>
+          <Button variant="outline" onClick={() => setWorkflowManagerOpen(true)}>
+            <List className="mr-2 h-4 w-4" />
+            Manage Workflows
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="kanban" className="space-y-4">
         <TabsList>
           <TabsTrigger value="kanban" className="flex items-center gap-2">
-            <List className="h-4 w-4" />
             Kanban Board
           </TabsTrigger>
           <TabsTrigger value="list" className="flex items-center gap-2">
@@ -238,6 +317,30 @@ export default function TasksPage({ params }: TasksPageProps) {
         <TabsContent value="kanban">
           <KanbanBoard 
             tasks={tasks} 
+            customColumns={customWorkflowColumns.length > 0 ? [
+              {
+                id: "todo" as const,
+                title: "To Do",
+                color: "bg-gray-100 dark:bg-gray-800",
+                icon: Circle,
+                count: 0
+              },
+              {
+                id: "in-progress" as const,
+                title: "In Progress", 
+                color: "bg-yellow-100 dark:bg-yellow-900",
+                icon: AlertCircle,
+                count: 0
+              },
+              {
+                id: "done" as const,
+                title: "Done",
+                color: "bg-green-100 dark:bg-green-900",
+                icon: CheckCircle2,
+                count: 0
+              },
+              ...customWorkflowColumns
+            ] : undefined}
             onTaskMove={(taskId, newStatus) => {
               // Update task status via API and refresh
               handleTaskStatusUpdate(taskId, newStatus)
@@ -256,6 +359,14 @@ export default function TasksPage({ params }: TasksPageProps) {
               console.log(`Creating task with status: ${status}`)
               // Refresh tasks after create
               handleTaskCreated()
+            }}
+            onColumnReorder={(columns) => {
+              console.log('Columns reordered:', columns)
+              setCustomWorkflowColumns(columns)
+              // Auto-save if we have a current workflow
+              if (currentWorkflowId) {
+                updateWorkflow(currentWorkflowId, columns)
+              }
             }}
           />
         </TabsContent>

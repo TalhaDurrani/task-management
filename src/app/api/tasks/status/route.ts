@@ -70,14 +70,23 @@ export async function GET(request: NextRequest) {
     }
 
     // If workspace provided, include custom statuses
-    let customStatusList: Array<{name: string, color: string, category: string}> = []
+    let customStatusList: Array<{id?: string, name: string, color: string, category: string}> = []
     try {
-      // First, try to get from CustomStatus table
-      const dbCustomStatuses = await prisma.$queryRaw`
-        SELECT name, color, category FROM custom_statuses WHERE "workspaceId" = ${workspaceId}
-      ` as Array<{name: string, color: string | null, category: string}>
+      // Get custom statuses from the CustomStatus table
+      const dbCustomStatuses = await prisma.customStatus.findMany({
+        where: {
+          workspaceId: workspaceId
+        },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          category: true
+        }
+      })
 
       customStatusList = dbCustomStatuses.map((cs) => ({
+        id: cs.id,
         name: cs.name,
         color: cs.color || '#34D399',
         category: cs.category
@@ -128,14 +137,14 @@ export async function POST(request: NextRequest) {
 
     if (!name || name.trim().length === 0) {
       return NextResponse.json(
-        { error: "Status name is required" }, 
+        { error: "Status name is required" },
         { status: 400 }
       )
     }
 
     if (!category) {
       return NextResponse.json(
-        { error: "Status category is required (BACKLOG, IN_PROGRESS, COMPLETED, ON_HOLD)" }, 
+        { error: "Status category is required (BACKLOG, IN_PROGRESS, COMPLETED, ON_HOLD)" },
         { status: 400 }
       )
     }
@@ -146,13 +155,29 @@ export async function POST(request: NextRequest) {
     const defaultStatuses = ['TODO', 'IN_PROGRESS', 'DONE']
     if (defaultStatuses.includes(statusName)) {
       return NextResponse.json(
-        { error: "This status already exists as a default status" }, 
+        { error: "This status already exists as a default status" },
         { status: 400 }
       )
     }
 
-    // Check if custom status already exists in this workspace
+    // Check if custom status already exists in this workspace (both in CustomStatus table and in tasks)
     if (user.workspaceId) {
+      // Check CustomStatus table
+      const existingCustomStatus = await prisma.customStatus.findFirst({
+        where: {
+          workspaceId: user.workspaceId,
+          name: statusName
+        }
+      })
+
+      if (existingCustomStatus) {
+        return NextResponse.json(
+          { error: "This custom status already exists in your workspace" },
+          { status: 400 }
+        )
+      }
+
+      // Check if it exists in tasks
       const existingTask = await prisma.task.findFirst({
         where: {
           project: {
@@ -167,24 +192,37 @@ export async function POST(request: NextRequest) {
 
       if (existingTask) {
         return NextResponse.json(
-          { error: "This custom status already exists in your workspace" }, 
+          { error: "This custom status already exists in your workspace" },
           { status: 400 }
         )
       }
     }
 
-    // Return the new status (we don't store statuses separately, they're just strings in tasks)
-    const newStatus = {
-      name: statusName,
-      category: category,
-      color: color || '#34D399'
-    }
+    // Create the custom status in the database so it appears in custom fields immediately
+    const newStatus = await prisma.customStatus.create({
+      data: {
+        name: statusName,
+        color: color || '#34D399',
+        category: category as any,
+        workspaceId: user.workspaceId!
+      }
+    })
 
-    return NextResponse.json(newStatus, { status: 201 })
+    console.log(`✅ Created custom status: ${newStatus.name} with ID: ${newStatus.id}`)
+
+    return NextResponse.json({
+      id: newStatus.id,
+      name: newStatus.name,
+      category: newStatus.category,
+      color: newStatus.color
+    }, { status: 201 })
   } catch (error: any) {
     console.error('Error creating custom status:', error)
+    if (error.code === 'P2002') {
+      return NextResponse.json({ error: "A status with this name already exists" }, { status: 409 })
+    }
     return NextResponse.json(
-      { error: "Internal server error" }, 
+      { error: error.message || "Internal server error" },
       { status: 500 }
     )
   }
