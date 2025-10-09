@@ -93,6 +93,12 @@ interface TasksListViewProps {
   projectId?: string;
   enableRealTimeUpdates?: boolean;
   refreshInterval?: number;
+  workflowStatuses?: Array<{
+    id: string;
+    title: string;
+    color: string;
+    icon: any;
+  }>;
 }
 
 const formatTaskType = (type: string) => {
@@ -114,7 +120,8 @@ export function TasksListView({
   onTaskCreated,
   projectId,
   enableRealTimeUpdates = false,
-  refreshInterval = 30000, // 30 seconds
+  refreshInterval = 30000,
+  workflowStatuses,
 }: TasksListViewProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [searchTerm, setSearchTerm] = useState("");
@@ -305,12 +312,22 @@ export function TasksListView({
         setAvailableTypes(allTypes);
       }
 
-      // Fetch statuses
-      const statusesResponse = await fetch("/api/tasks/status");
-      if (statusesResponse.ok) {
-        const statusesData = await statusesResponse.json();
-        console.log("📥 Loaded statuses from API:", statusesData); // Debug log
-        setAvailableStatuses(statusesData);
+      // Use workflow statuses if provided, otherwise load from API
+      if (workflowStatuses && workflowStatuses.length > 0) {
+        // Convert workflow columns to status format
+        const workflowStatusOptions = workflowStatuses.map(col => ({
+          name: col.title,
+          color: col.color
+        }))
+        setAvailableStatuses(workflowStatusOptions)
+      } else {
+        // Fetch statuses
+        const statusesResponse = await fetch("/api/tasks/status");
+        if (statusesResponse.ok) {
+          const statusesData = await statusesResponse.json();
+          console.log("📥 Loaded statuses from API:", statusesData); // Debug log
+          setAvailableStatuses(statusesData);
+        }
       }
     } catch (error) {
       console.error("Failed to load types and statuses:", error);
@@ -916,11 +933,11 @@ export function TasksListView({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Status</SelectItem>
-                          <SelectItem value="todo">To Do</SelectItem>
-                          <SelectItem value="in-progress">
-                            In Progress
-                          </SelectItem>
-                          <SelectItem value="done">Done</SelectItem>
+                          {availableStatuses.map((status) => (
+                            <SelectItem key={status.name} value={normalizeStatusFromAPI(status.name)}>
+                              {getStatusDisplayText(normalizeStatusFromAPI(status.name))}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1198,15 +1215,13 @@ export function TasksListView({
                       </SelectTrigger>
                       <SelectContent className="z-50">
                         {availableStatuses.map((status) => {
-                          const uiValue = normalizeStatusFromAPI(status.name);
-                          // console.log("🎨 Rendering status option:", {
-                          //   apiName: status.name,
-                          //   uiValue,
-                          //   displayText: getStatusDisplayText(uiValue),
-                          // });
+                          // If using workflow statuses, use the title directly, otherwise normalize from API
+                          const statusValue = workflowStatuses ? 
+                            status.name.toLowerCase().replace(/\s+/g, '-') : 
+                            normalizeStatusFromAPI(status.name);
                           return (
-                            <SelectItem key={status.name} value={uiValue}>
-                              {getStatusDisplayText(uiValue)}
+                            <SelectItem key={status.name} value={statusValue}>
+                              {workflowStatuses ? status.name : getStatusDisplayText(normalizeStatusFromAPI(status.name))}
                             </SelectItem>
                           );
                         })}
@@ -1328,7 +1343,11 @@ export function TasksListView({
                   </span>
                 </div>
               )}
-              <CreateTaskDialog onTaskCreated={onTaskCreated}>
+              <CreateTaskDialog 
+                onTaskCreated={onTaskCreated}
+                projectId={projectId}
+                workflowStatuses={workflowStatuses}
+              >
                 <Button variant="ghost" size="sm" className="h-8 px-2">
                   <Plus className="h-4 w-4 mr-1" />
                   Add task

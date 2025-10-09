@@ -14,10 +14,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 export function NotificationDropdown() {
-  const [notifications, setNotifications] = useState([])
-  const [currentUser, setCurrentUser] = useState(null)
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
   
   useEffect(() => {
+    // Only load data on client side to prevent build-time API calls
+    if (typeof window === 'undefined') return
+
     const loadData = async () => {
       try {
         const response = await fetch('/api/auth/login', {

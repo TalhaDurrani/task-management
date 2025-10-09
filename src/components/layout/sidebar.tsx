@@ -169,7 +169,10 @@ export function Sidebar() {
   
   // Load current user and data
   useEffect(() => {
-    loadData()
+    // Only load data on client side to prevent build-time API calls
+    if (typeof window !== 'undefined') {
+      loadData()
+    }
   }, [])
 
   // Refresh data when pathname changes (for project creation)

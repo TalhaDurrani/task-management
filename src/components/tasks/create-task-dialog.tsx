@@ -109,9 +109,15 @@ interface CreateTaskDialogProps {
   children?: React.ReactNode
   projectId?: string
   onTaskCreated?: () => void
+  workflowStatuses?: Array<{
+    id: string
+    title: string
+    color: string
+    icon: any
+  }>
 }
 
-export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateTaskDialogProps) {
+export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowStatuses }: CreateTaskDialogProps) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
@@ -200,12 +206,22 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
         setTypes(allTypes)
       }
 
-      // Load statuses
-      const statusesUrl = workspaceId ? `/api/tasks/status?workspaceId=${workspaceId}` : "/api/tasks/status"
-      const statusesResponse = await fetch(statusesUrl)
-      if (statusesResponse.ok) {
-        const statusesData = await statusesResponse.json()
-        setStatuses(statusesData)
+      // Use workflow statuses if provided, otherwise load from API
+      if (workflowStatuses && workflowStatuses.length > 0) {
+        // Convert workflow columns to status format
+        const workflowStatusOptions = workflowStatuses.map(col => ({
+          name: col.title,
+          color: col.color
+        }))
+        setStatuses(workflowStatusOptions)
+      } else {
+        // Load statuses from API
+        const statusesUrl = workspaceId ? `/api/tasks/status?workspaceId=${workspaceId}` : "/api/tasks/status"
+        const statusesResponse = await fetch(statusesUrl)
+        if (statusesResponse.ok) {
+          const statusesData = await statusesResponse.json()
+          setStatuses(statusesData)
+        }
       }
     } catch (error) {
       console.error("Failed to load types and statuses:", error)

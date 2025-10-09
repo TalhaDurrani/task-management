@@ -19,6 +19,7 @@ interface ActivityItem {
     name: string | null
     email: string
     role: string
+    image?: string
   } | null
   createdAt: Date
 }
@@ -32,7 +33,7 @@ interface ActivityFeedProps {
   projects: Project[]
 }
 
-const activityIcons = {
+const activityIcons: Record<string, any> = {
   comment: MessageSquare,
   timelog: Clock,
   task: CheckSquare,
@@ -40,7 +41,7 @@ const activityIcons = {
   default: Activity,
 }
 
-const activityColors = {
+const activityColors: Record<string, string> = {
   comment: "text-blue-500",
   timelog: "text-green-500",
   task: "text-purple-500",
@@ -53,6 +54,9 @@ export function ActivityFeed({ projects }: ActivityFeedProps) {
   const [activities, setActivities] = useState<ActivityItem[]>([])
 
   useEffect(() => {
+    // Only load data on client side to prevent build-time API calls
+    if (typeof window === 'undefined') return
+
     const loadActivities = async () => {
       try {
         const response = await fetch('/api/activity')

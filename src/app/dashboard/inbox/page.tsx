@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   MessageSquare, 
@@ -20,13 +19,18 @@ import {
   Trash2
 } from "lucide-react"
 
+export const dynamic = 'force-dynamic'
+
 export default function InboxPage() {
-  const [currentUser, setCurrentUser] = useState(null)
-  const [notifications, setNotifications] = useState([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [notifications, setNotifications] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
+    // Only load data on client side to prevent build-time API calls
+    if (typeof window === 'undefined') return
+
     const loadData = async () => {
       try {
         // Get current user from the new auth system
