@@ -327,7 +327,7 @@ export function Sidebar() {
       isCollapsed ? "w-16" : "w-72"
     )}>
       {/* Header */}
-      <div className="p-4 border-b border-border">
+      {/* <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
           <div className={cn("flex items-center space-x-3", isCollapsed && "space-x-0")}>
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
@@ -335,7 +335,7 @@ export function Sidebar() {
             </div>
             {!isCollapsed && (
               <div>
-                <h1 className="font-semibold text-lg">TaskFlow</h1>
+                <h1 className="font-semibold text-lg">Sigma Flow</h1>
                 <p className="text-xs text-muted-foreground">Project Management</p>
               </div>
             )}
@@ -349,7 +349,7 @@ export function Sidebar() {
             {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
           </Button>
         </div>
-      </div>
+      </div> */}
 
       {/* Search */}
       {!isCollapsed && (

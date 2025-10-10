@@ -4,25 +4,41 @@ import type { CreateProjectData, UpdateProjectData } from "@/types"
 export class ProjectService {
   static async getProjects(userId: string) {
     try {
-      // Get user's workspace
+      // Get user and all their workspace memberships
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, }
+        select: { 
+          workspaceId: true,
+          workspaceMemberships: {
+            select: {
+              workspaceId: true
+            }
+          }
+        }
       })
 
       if (!user) {
         throw new Error('User not found')
       }
 
-      // If user is not assigned to workspace, return empty array
-      if (!user.workspaceId) {
+      // Get all workspace IDs user is a member of
+      const workspaceIds = user.workspaceMemberships.map(wm => wm.workspaceId)
+      
+      // Also include their primary workspace if they have one
+      if (user.workspaceId && !workspaceIds.includes(user.workspaceId)) {
+        workspaceIds.push(user.workspaceId)
+      }
+
+      // If user is not a member of any workspace, return empty array
+      if (workspaceIds.length === 0) {
         return []
       }
 
       const projects = await prisma.project.findMany({
         where: {
-          workspaceId: user.workspaceId,
-          // Remove the OR condition - users should see all projects in their workspace
+          workspaceId: {
+            in: workspaceIds  // Show projects from ALL workspaces user is a member of
+          }
         },
         include: {
           user: {

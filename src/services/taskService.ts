@@ -75,6 +75,15 @@ export class TaskService {
             }
           },
           subTasks: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
             orderBy: {
               createdAt: 'asc'
             }
@@ -111,6 +120,11 @@ export class TaskService {
             include: {
               customField: true
             }
+          },
+          tags: {
+            include: {
+              tag: true
+            }
           }
         },
         orderBy: {
@@ -134,9 +148,9 @@ export class TaskService {
         dueDate: task.dueDate,
         createdAt: task.createdAt,
         creator: task.creator,
-        assignees: task.assignees.map(ta => ta.user),
+        assignees: task.assignees.map((ta: any) => ta.user),
         project: task.project,
-        comments: task.comments.map(comment => ({
+        comments: task.comments?.map(comment => ({
           id: comment.id,
           taskId: comment.taskId,
           userId: comment.userId,
@@ -144,17 +158,19 @@ export class TaskService {
           createdAt: comment.createdAt,
           updatedAt: comment.updatedAt,
           user: comment.user
-        })),
-        subTasks: task.subTasks.map(subTask => ({
+        })) || [],
+        subTasks: task.subTasks?.map(subTask => ({
           id: subTask.id,
           taskId: subTask.taskId,
           title: subTask.title,
           description: subTask.description,
+          userId: subTask.userId,
+          user: subTask.user,
           completed: subTask.completed,
           createdAt: subTask.createdAt,
           updatedAt: subTask.updatedAt
-        })),
-        timeLogs: task.timeLogs.map(timeLog => ({
+        })) || [],
+        timeLogs: task.timeLogs?.map(timeLog => ({
           id: timeLog.id,
           taskId: timeLog.taskId,
           userId: timeLog.userId,
@@ -163,8 +179,8 @@ export class TaskService {
           description: timeLog.description,
           createdAt: timeLog.createdAt,
           user: timeLog.user
-        })),
-        attachments: task.attachments.map(attachment => ({
+        })) || [],
+        attachments: task.attachments?.map(attachment => ({
           id: attachment.id,
           taskId: attachment.taskId,
           fileName: attachment.fileName,
@@ -174,14 +190,15 @@ export class TaskService {
           uploadedBy: attachment.uploadedBy,
           uploadedAt: attachment.uploadedAt,
           user: attachment.user
-        })),
-        customFields: task.customFields.map(tcf => ({
+        })) || [],
+        customFields: task.customFields?.map(tcf => ({
           id: tcf.id,
           taskId: tcf.taskId,
           customFieldId: tcf.customFieldId,
           value: tcf.value,
           customField: tcf.customField
-        }))
+        })) || [],
+        tags: task.tags?.map(tt => tt.tag) || []
       }))
     } catch (error) {
       console.error('Error in TaskService.getTasks:', error)
@@ -249,6 +266,15 @@ export class TaskService {
             }
           },
           subTasks: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
             orderBy: {
               createdAt: 'asc'
             }
@@ -284,6 +310,11 @@ export class TaskService {
           customFields: {
             include: {
               customField: true
+            }
+          },
+          tags: {
+            include: {
+              tag: true
             }
           }
         }
@@ -326,6 +357,8 @@ export class TaskService {
           taskId: subTask.taskId,
           title: subTask.title,
           description: subTask.description,
+          userId: subTask.userId,
+          user: subTask.user,
           completed: subTask.completed,
           createdAt: subTask.createdAt,
           updatedAt: subTask.updatedAt
@@ -357,7 +390,8 @@ export class TaskService {
           customFieldId: tcf.customFieldId,
           value: tcf.value,
           customField: tcf.customField
-        }))
+        })),
+        tags: task.tags.map(tt => tt.tag)
       }
     } catch (error) {
       console.error('Error in TaskService.getTask:', error)
@@ -485,6 +519,16 @@ export class TaskService {
         })
       }
 
+      // Handle tags if provided
+      if (data.tags && data.tags.length > 0) {
+        await prisma.taskTag.createMany({
+          data: data.tags.map(tagId => ({
+            taskId: task.id,
+            tagId: tagId
+          }))
+        })
+      }
+
       // Handle custom fields if provided
       if (data.customFields && data.customFields.length > 0) {
         // Validate custom fields exist and belong to workspace
@@ -528,6 +572,7 @@ export class TaskService {
             taskId: task.id,
             title: st.title,
             description: st.description,
+            userId: st.userId,
             completed: false
           }))
         })
@@ -562,7 +607,7 @@ export class TaskService {
         dueDate: task.dueDate,
         project: task.project,
         creator: task.creator,
-        assignees: task.assignees.map(a => a.user)
+        assignees: task.assignees?.map((a: any) => a.user) || []
       }
     } catch (error) {
       console.error('Task creation error:', error)
@@ -844,7 +889,7 @@ export class TaskService {
         dueDate: updatedTask.dueDate,
         project: updatedTask.project,
         creator: updatedTask.creator,
-        assignees: updatedTask.assignees.map(a => a.user)
+        assignees: updatedTask.assignees?.map(a => a.user) || []
       }
     } catch (error) {
       console.error('Status update error:', error)

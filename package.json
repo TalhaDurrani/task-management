@@ -8,7 +8,13 @@
     "lint": "next lint",
     "start": "next start",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "db:clean": "node scripts/clean-database.js",
+    "db:reset": "node scripts/reset-database.js --seed",
+    "db:reset:clean": "node scripts/reset-database.js --no-seed",
+    "db:push": "npx prisma db push",
+    "db:seed": "npx prisma db seed",
+    "db:studio": "npx prisma studio"
   },
   "dependencies": {
     "@hookform/resolvers": "latest",

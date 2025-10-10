@@ -6,12 +6,12 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { 
-  Plus, 
-  MoreHorizontal, 
-  Calendar, 
-  Clock, 
-  User, 
+import {
+  Plus,
+  MoreHorizontal,
+  Calendar,
+  Clock,
+  User,
   Flag,
   CheckCircle2,
   AlertCircle,
@@ -19,9 +19,21 @@ import {
   Edit,
   Trash2,
   GripVertical,
-  Grip
+  Grip,
+  Columns,
+  ChevronDown,
+  Star,
+  Zap,
+  Target
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 interface Task {
   id: string
   title: string
@@ -49,6 +61,26 @@ interface Task {
   storyPoints?: number
   issueType?: "story" | "bug" | "task" | "epic"
   sprintId?: string
+  customStatus?: string | null
+  statusCategory?: string
+}
+
+interface WorkflowColumn {
+  id: string
+  title: string
+  color: string
+  limit?: number
+}
+
+interface Workflow {
+  id: string
+  projectId: string
+  userId: string
+  name: string
+  columns: WorkflowColumn[]
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 interface KanbanBoardProps {
@@ -58,13 +90,9 @@ interface KanbanBoardProps {
   onTaskDelete?: (taskId: string) => void
   onCreateTask?: (status: string) => void
   onColumnReorder?: (columns: Array<{id: string | number, title: string, color: string, icon: any, count: number}>) => void
-  customColumns?: Array<{
-    id: number
-    title: string
-    color: string
-    icon: any
-    count: number
-  }>
+  workflows?: Workflow[]
+  selectedWorkflowId?: string
+  onWorkflowChange?: (workflowId: string) => void
 }
 
 const columns = [
@@ -91,20 +119,46 @@ const columns = [
   }
 ]
 
-export function KanbanBoard({ 
-  tasks, 
+export function KanbanBoard({
+  tasks,
   onTaskMove,
-  onTaskEdit, 
-  onTaskDelete, 
+  onTaskEdit,
+  onTaskDelete,
   onCreateTask,
   onColumnReorder,
-  customColumns 
+  workflows = [],
+  selectedWorkflowId,
+  onWorkflowChange
 }: KanbanBoardProps): JSX.Element {
   const [draggedTask, setDraggedTask] = useState<string | null>(null)
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
   const [columnOrder, setColumnOrder] = useState<Array<{id: string | number, title: string, color: string, icon: any, count: number}>>([])
 
-  const activeColumns = customColumns || columns
+  // Get the selected workflow
+  const selectedWorkflow = workflows.find(w => w.id === selectedWorkflowId)
+
+  // Icon mapping helper
+  const iconMap: Record<string, any> = {
+    'Circle': Circle,
+    'AlertCircle': AlertCircle,
+    'CheckCircle2': CheckCircle2,
+    'Star': Star,
+    'Zap': Zap,
+    'Target': Target,
+    'Flag': Flag
+  }
+
+  // Convert workflow columns to kanban columns format
+  const workflowColumns = selectedWorkflow?.columns.map((col: any) => ({
+    id: col.id,
+    title: col.title,
+    color: col.color || '#6B7280',
+    icon: iconMap[col.icon] || Circle,
+    count: 0,
+    category: col.category
+  })) || columns
+
+  const activeColumns = workflowColumns
 
   // Initialize column order
   useEffect(() => {
@@ -113,36 +167,68 @@ export function KanbanBoard({
     }
   }, [activeColumns, columnOrder.length])
 
-  // Group tasks by status (convert string statuses to numeric keys for column matching)
+  console.log('🎯 KANBAN BOARD DEBUG:', {
+    totalTasks: tasks.length,
+    columns: activeColumns.map(col => ({ id: col.id, title: col.title })),
+    sampleTasks: tasks.slice(0, 3).map(t => ({ 
+      id: t.id.slice(0, 8), 
+      title: t.title,
+      status: t.status, 
+      customStatus: t.customStatus 
+    }))
+  })
+
+  // IMPROVED GROUPING LOGIC - Works with both default and custom statuses
   const tasksByStatus = tasks.reduce((acc, task) => {
-    // Convert status to numeric key for consistent grouping
-    let numericKey: string;
+    const keys: string[] = []
 
-    if (typeof task.status === 'number') {
-      numericKey = task.status.toString();
-    } else if (typeof task.status === 'string') {
-      // Convert string status to numeric equivalent
-      const statusMap: { [key: string]: string } = {
-        'todo': '1',
-        'backlog': '1',
-        'in progress': '2',
-        'in_progress': '2',
-        'inprogress': '2',
-        'doing': '2',
-        'done': '3',
-        'completed': '3'
-      };
-      numericKey = statusMap[task.status.toLowerCase()] || '1';
-    } else {
-      numericKey = '1'; // Default fallback
+    // RULE 1: If task has customStatus, use it as a key
+    if (task.customStatus) {
+      keys.push(task.customStatus)
+    }
+    
+    // RULE 2: Always add numeric status as a key (for default columns)
+    keys.push(String(task.status))
+
+    // RULE 3: For default workflows, also map numeric to text keys
+    // This ensures tasks show up in default "To Do", "In Progress", "Done" columns
+    if (!task.customStatus) {
+      switch (Number(task.status)) {
+        case 1:
+          keys.push('To Do')
+          keys.push('Todo')
+          keys.push('Backlog')
+          break
+        case 2:
+          keys.push('In Progress')
+          keys.push('In Development')
+          break
+        case 3:
+          keys.push('Done')
+          keys.push('Completed')
+          break
+      }
     }
 
-    if (!acc[numericKey]) {
-      acc[numericKey] = []
-    }
-    acc[numericKey].push(task)
+    // Add task to all matching keys
+    keys.forEach(key => {
+      if (!acc[key]) {
+        acc[key] = []
+      }
+      // Avoid duplicates in the same group
+      if (!acc[key].some(t => t.id === task.id)) {
+        acc[key].push(task)
+      }
+    })
+
     return acc
   }, {} as Record<string, Task[]>)
+
+  console.log('📊 TASKS GROUPED:', Object.entries(tasksByStatus).map(([key, tasks]) => ({
+    groupKey: key,
+    taskCount: tasks.length,
+    taskTitles: tasks.map(t => t.title).slice(0, 2)
+  })))
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -196,12 +282,23 @@ export function KanbanBoard({
     e.dataTransfer.dropEffect = "move"
   }
 
-  const handleDrop = (e: React.DragEvent, status: string | number) => {
+  const handleDrop = (e: React.DragEvent, columnId: string | number, columnTitle: string) => {
     e.preventDefault()
     e.stopPropagation()
 
     if (draggedTask) {
-      onTaskMove?.(draggedTask, status)
+      // SIMPLIFIED DROP LOGIC
+      // Always pass the column title - parent will handle the mapping
+      const statusValue = columnTitle
+      
+      console.log('🎯 TASK DROPPED:', { 
+        taskId: draggedTask.slice(0, 8), 
+        columnId, 
+        columnTitle,
+        statusValue 
+      })
+      
+      onTaskMove?.(draggedTask, statusValue)
       setDraggedTask(null)
     }
   }
@@ -228,7 +325,33 @@ export function KanbanBoard({
   return (
     <div className="flex space-x-6 overflow-x-auto pb-6">
       {columnOrder.map((column) => {
-        const columnTasks = tasksByStatus[String(column.id)] || []
+        // IMPROVED MATCHING LOGIC - Works with both default and custom workflows
+        let columnTasks: Task[] = []
+        
+        // Strategy 1: Match by exact column title (for custom statuses)
+        columnTasks = tasksByStatus[column.title] || []
+        
+        // Strategy 2: Match by column ID (for default numeric statuses)
+        if (columnTasks.length === 0) {
+          columnTasks = tasksByStatus[String(column.id)] || []
+        }
+        
+        // Strategy 3: For default columns, also check common variations
+        if (columnTasks.length === 0) {
+          if (column.title === 'To Do' || column.title === 'Todo') {
+            columnTasks = tasksByStatus['1'] || tasksByStatus['To Do'] || tasksByStatus['Todo'] || tasksByStatus['Backlog'] || []
+          } else if (column.title === 'In Progress') {
+            columnTasks = tasksByStatus['2'] || tasksByStatus['In Progress'] || tasksByStatus['In Development'] || []
+          } else if (column.title === 'Done') {
+            columnTasks = tasksByStatus['3'] || tasksByStatus['Done'] || tasksByStatus['Completed'] || []
+          }
+        }
+
+        console.log(`📋 Column "${column.title}" (ID: ${column.id}):`, {
+          tasksFound: columnTasks.length,
+          taskTitles: columnTasks.map(t => t.title).slice(0, 2)
+        })
+
         const Icon = column.icon
 
         return (
@@ -249,8 +372,13 @@ export function KanbanBoard({
                     >
                       <GripVertical className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <div className={cn("p-1.5 rounded-md", column.color)}>
-                      <Icon className="h-4 w-4" />
+                    <div 
+                      className="p-1.5 rounded-md"
+                      style={{ 
+                        backgroundColor: column.color ? `${column.color}20` : '#6B728020' 
+                      }}
+                    >
+                      <Icon className="h-4 w-4" style={{ color: column.color || '#6B7280' }} />
                     </div>
                     <CardTitle className="text-sm font-medium">
                       {column.title}
@@ -262,7 +390,7 @@ export function KanbanBoard({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => onCreateTask?.(column.id)}
+                    onClick={() => onCreateTask?.(String(column.id))}
                     className="h-6 w-6 p-0"
                   >
                     <Plus className="h-3 w-3" />
@@ -272,13 +400,13 @@ export function KanbanBoard({
               <CardContent 
                 className="space-y-3 min-h-96"
                 onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, column.id)}
+                onDrop={(e) => handleDrop(e, column.id, column.title)}
               >
                 {columnTasks.map((task) => {
-                  const isOverdue = task.timelineEnd && new Date(task.timelineEnd) < new Date() && task.status !== "done"
+                  const isOverdue = task.timelineEnd && new Date(task.timelineEnd) < new Date() && task.status !== 3 && task.status !== "done"
                   const isDueSoon = task.timelineEnd && 
-                    new Date(task.timelineEnd) <= new Date(Date.now() + 24 * 60 * 60 * 1000) && 
-                    task.status !== "done"
+                    new Date(task.timelineEnd) <= new Date(Date.now() + 24 * 60 + 60 * 1000) && 
+                    task.status !== 3 && task.status !== "done"
 
                   return (
                     <Card

@@ -36,11 +36,21 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     
     // If status is provided, use specific status update method
     if (body.status !== undefined) {
+      // Ensure customStatus is a string (Prisma expects String|null)
+      let customStatusValue = body.customStatus
+      if (customStatusValue !== undefined && customStatusValue !== null) {
+        // Coerce numeric values to string to avoid Prisma type errors
+        if (typeof customStatusValue === 'number') {
+          customStatusValue = String(customStatusValue)
+        }
+      }
+
+      // Allow passing customStatus from client to be stored with the task
       const updatedTask = await TaskService.updateTaskStatus(
-        params.id, 
-        body.status, 
+        params.id,
+        body.status,
         user.id,
-        { force: true } // Allow all status transitions
+        { customStatus: customStatusValue, force: true } // Allow all status transitions
       )
       return NextResponse.json(updatedTask)
     }

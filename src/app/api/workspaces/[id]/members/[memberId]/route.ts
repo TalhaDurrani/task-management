@@ -138,9 +138,27 @@ export async function DELETE(
       return NextResponse.json({ error: "Only workspace admins or owners can remove members" }, { status: 403 })
     }
 
+    // Check if user is being removed from their primary workspace
+    const userToRemove = await prisma.user.findUnique({
+      where: { id: memberId },
+      select: { 
+        workspaceId: true,
+        workspaceMemberships: {
+          where: {
+            workspaceId: {
+              not: workspaceId  // Get OTHER workspace memberships
+            }
+          },
+          select: {
+            workspaceId: true
+          }
+        }
+      }
+    })
+
     // Remove the workspace member
     await prisma.$transaction([
-      // Delete WorkspaceMember record
+      // Delete WorkspaceMember record for THIS workspace only
       prisma.workspaceMember.delete({
         where: {
           userId_workspaceId: {
@@ -149,16 +167,28 @@ export async function DELETE(
           }
         }
       }),
-      // Update user's workspaceId if this was their active workspace
-      prisma.user.updateMany({
-        where: {
-          id: memberId,
-          workspaceId: workspaceId
-        },
+      // Disconnect from workspace members relation
+      prisma.workspace.update({
+        where: { id: workspaceId },
         data: {
-          workspaceId: null
+          members: {
+            disconnect: { id: memberId }
+          }
         }
-      })
+      }),
+      // Update user's primary workspaceId only if this was their primary workspace
+      ...(userToRemove?.workspaceId === workspaceId ? [
+        prisma.user.update({
+          where: { id: memberId },
+          data: {
+            // If they have other workspace memberships, set to the first one
+            // Otherwise set to null
+            workspaceId: userToRemove.workspaceMemberships.length > 0 
+              ? userToRemove.workspaceMemberships[0].workspaceId 
+              : null
+          }
+        })
+      ] : [])
     ])
 
     return NextResponse.json({

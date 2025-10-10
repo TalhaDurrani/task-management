@@ -32,14 +32,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Add user to workspace with MEMBER role
+    // DON'T update user's workspaceId - that should remain their primary workspace
     await prisma.$transaction([
-      // Update user's workspaceId
-      prisma.user.update({
-        where: { id: user.id },
-        data: {
-          workspaceId: workspace.id,
-        },
-      }),
       // Create WorkspaceMember record with MEMBER role
       prisma.workspaceMember.create({
         data: {

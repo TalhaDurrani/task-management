@@ -53,6 +53,8 @@ interface Task {
   title: string;
   description?: string;
   status: number | string | { name: string } | null;
+  customStatus?: string | null;
+  statusCategory?: string;
   priority: "low" | "medium" | "high" | "critical";
   type?: "bug" | "feature" | "story" | "epic" | "task" | "subtask";
   dueDate?: string;
@@ -136,13 +138,11 @@ export function TasksListView({
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Add missing state variables
-  const [editingTask, setEditingTask] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
   const [showFilter, setShowFilter] = useState(false);
   const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
 
   // Add dynamic types and statuses state
   const [availableTypes, setAvailableTypes] = useState<
@@ -157,7 +157,7 @@ export function TasksListView({
   ]);
 
   const [availableStatuses, setAvailableStatuses] = useState<
-    { name: string; color?: string; category?: string }[]
+    { id?: string; name: string; color?: string; category?: string }[]
   >([
     { name: "TODO", color: "#GRAY", category: "BACKLOG" },
     { name: "IN_PROGRESS", color: "#BLUE", category: "IN_PROGRESS" },
@@ -212,15 +212,13 @@ export function TasksListView({
       case "STORY":
         return "text-blue-600 bg-blue-100";
       case "EPIC":
-        return "text-purple-600 bg-purple-100";
+        return "text-indigo-600 bg-indigo-100";
       case "TASK":
         return "text-gray-600 bg-gray-100";
       default:
         return "text-gray-600 bg-gray-100";
     }
   };
-
-
 
   // Load dynamic types and statuses
   const loadTypesAndStatuses = async () => {
@@ -239,43 +237,42 @@ export function TasksListView({
 
       // Use workflow statuses if provided, otherwise load from API
       if (workflowStatuses && workflowStatuses.length > 0) {
-        // Convert workflow columns to status format
-        const workflowStatusOptions = workflowStatuses.map(col => ({
+        // Convert workflow columns to status format with proper structure
+        const workflowStatusOptions = workflowStatuses.map((col: any) => ({
+          id: col.id,
           name: col.title,
-          color: col.color
+          color: col.color,
+          category: col.category || 'BACKLOG' // Default category if not provided
         }))
+        console.log("Setting available statuses from workflow:", workflowStatusOptions);
         setAvailableStatuses(workflowStatusOptions)
       } else {
-        // Fetch statuses
-        const statusesResponse = await fetch("/api/tasks/status");
-        if (statusesResponse.ok) {
-          const statusesData = await statusesResponse.json();
-          console.log("📥 Loaded statuses from API:", statusesData); // Debug log
-          setAvailableStatuses(statusesData);
+        // Fetch statuses from workspace API
+        const userResponse = await fetch("/api/auth/me")
+        let workspaceId = null
+        if (userResponse.ok) {
+          const userData = await userResponse.json()
+          workspaceId = userData.workspaceId
         }
-      }
+
+        if (workspaceId) {
+          const statusesResponse = await fetch(`/api/tasks/status?workspaceId=${workspaceId}`);
+          if (statusesResponse.ok) {
+            const statusesData = await statusesResponse.json();
+            console.log("📥 Loaded statuses from API:", statusesData);
+            setAvailableStatuses(statusesData.map((status: any) => ({ ...status, category: status.category || 'BACKLOG' })));
+          }
+        }
+      };
     } catch (error) {
       console.error("Failed to load types and statuses:", error);
     }
   };
-
-  // For development/testing - if tasks don't have assignees data, show as unassigned
-  // In production, tasks should come with proper assignee data from the API
-  // Expected task structure:
-  // {
-  //   id: string,
-  //   title: string,
-  //   type?: "bug" | "feature" | "story" | "epic" | "task" | "subtask",
-  //   status: "todo" | "in-progress" | "done",
-  //   priority: "low" | "medium" | "high" | "critical",
-  //   assignees?: Array<{id: string, name: string, avatar?: string}>,
-  //   assignee?: {id: string, name: string, avatar?: string} // backward compatibility
-  // }
-
-  // Update tasks when initialTasks prop changes (preserve local changes unless forced)
+// Update tasks when initialTasks prop changes (preserve local changes unless forced)
   useEffect(() => {
     // Only update if we don't have local tasks or if initialTasks is significantly different
     const hasSignificantChanges =
+      tasks.length === 0 ||
       initialTasks.length !== tasks.length ||
       initialTasks.some((initTask, index) => {
         const localTask = tasks[index];
@@ -336,10 +333,10 @@ export function TasksListView({
     return () => clearInterval(interval);
   }, [refreshTasks, refreshInterval, projectId, enableRealTimeUpdates]);
 
-  // Load types and statuses on component mount
+  // Load types and statuses on component mount and when workflowStatuses change
   useEffect(() => {
     loadTypesAndStatuses();
-  }, []);
+  }, [workflowStatuses]);
 
   const handleSelectTask = (taskId: string, checked: boolean) => {
     if (checked) {
@@ -420,47 +417,6 @@ export function TasksListView({
     }
   };
 
-  const handleInlineEdit = (task: Task) => {
-    setEditingTask(task.id);
-    setEditingTitle(task.title);
-  };
-
-  const handleSaveEdit = async (taskId: string) => {
-    if (editingTitle.trim()) {
-      try {
-        // Call API to update task title
-        const response = await fetch(`/api/tasks/${taskId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ title: editingTitle.trim() }),
-        });
-
-        if (response.ok) {
-          // Optimistically update local state
-          setTasks((prevTasks) =>
-            prevTasks.map((task) =>
-              task.id === taskId
-                ? { ...task, title: editingTitle.trim() }
-                : task
-            )
-          );
-        } else {
-          console.error("Failed to update task title");
-        }
-      } catch (error) {
-        console.error("Error updating task title:", error);
-      }
-    }
-    setEditingTask(null);
-    setEditingTitle("");
-  };
-
-  const handleCancelEdit = () => {
-    setEditingTask(null);
-    setEditingTitle("");
-  };
 
   const handleTaskAssign = async (taskId: string, userId: string) => {
     try {
@@ -550,28 +506,74 @@ export function TasksListView({
       return;
     }
 
-    const newStatus = getNumericStatus(status);
+    console.log("🔄 Status change requested:", { taskId, status, originalStatus: originalTask.status });
 
-    // Optimistically update the UI immediately
+    // Map status to numeric (1/2/3) and customStatus name using CustomStatus table data
+    let resolvedNumericStatus = 1;
+    let customStatusName: string | undefined = undefined;
+
+    const statusStr = String(status);
+
+    // Check if it's a built-in status (1, 2, 3, or their names)
+    if (['1', '2', '3'].includes(statusStr)) {
+      resolvedNumericStatus = parseInt(statusStr, 10);
+    } else if (['todo', 'TODO', 'BACKLOG'].includes(statusStr)) {
+      resolvedNumericStatus = 1;
+    } else if (['in-progress', 'in_progress', 'IN_PROGRESS'].includes(statusStr)) {
+      resolvedNumericStatus = 2;
+    } else if (['done', 'DONE', 'COMPLETED'].includes(statusStr)) {
+      resolvedNumericStatus = 3;
+    } else {
+      // Not a built-in status - look up in availableStatuses (from CustomStatus table)
+      const customStatus = availableStatuses.find((s) => String(s.id) === statusStr);
+      
+      if (customStatus) {
+        // Map category to numeric status
+        switch (customStatus.category) {
+          case 'BACKLOG':
+            resolvedNumericStatus = 1;
+            break;
+          case 'IN_PROGRESS':
+            resolvedNumericStatus = 2;
+            break;
+          case 'COMPLETED':
+            resolvedNumericStatus = 3;
+            break;
+          case 'ON_HOLD':
+            resolvedNumericStatus = 1; // Treat ON_HOLD as BACKLOG
+            break;
+          default:
+            resolvedNumericStatus = 1;
+        }
+        customStatusName = String(customStatus.name);
+      } else {
+        // Fallback: treat as custom status name
+        resolvedNumericStatus = 1;
+        customStatusName = statusStr;
+      }
+    }
+
+    console.log("📤 Sending to API:", { status: resolvedNumericStatus, customStatus: customStatusName });
+
+    // Optimistically update the UI
     setTasks((prevTasks) =>
       prevTasks.map((task) =>
         task.id === taskId
-          ? { ...task, status: newStatus }
+          ? { ...task, status: customStatusName ? customStatusName : resolvedNumericStatus }
           : task
       )
     );
 
     try {
-      // Normalize status for API call
-      const normalizedStatus = normalizeStatusForAPI(status);
+      const payload: any = { status: resolvedNumericStatus };
+      if (customStatusName) payload.customStatus = String(customStatusName);
 
-      // Make API call to update task status
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ status: normalizedStatus }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -591,7 +593,6 @@ export function TasksListView({
               ...task,
               status: typeof result.status === 'number' ? result.status : getNumericStatus(result.status.toString()),
               completedAt: result.completedAt,
-              // Update any other fields that might have changed
               ...(result.priority && { priority: result.priority }),
               ...(result.description && { description: result.description }),
             };
@@ -602,11 +603,11 @@ export function TasksListView({
       });
 
       // Trigger callbacks if provided
-      onTaskStatusChange?.(taskId, normalizedStatus);
+      onTaskStatusChange?.(taskId, customStatusName ? customStatusName : String(resolvedNumericStatus));
 
       // Call onTaskMove to trigger parent refresh
       if (onTaskMove) {
-        onTaskMove(taskId, normalizedStatus);
+        onTaskMove(taskId, customStatusName ? customStatusName : String(resolvedNumericStatus));
       }
 
       // Brief refresh indication
@@ -772,8 +773,8 @@ export function TasksListView({
     <>
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         {/* Header Toolbar - ClickUp Style */}
-        <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3">
-          <div className="flex items-center justify-between">
+        <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3">
+          <div className="flex items-center justify-between gap-6">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -942,34 +943,33 @@ export function TasksListView({
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[800px]">
             <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
               <tr>
-                <th className="w-8 px-3 py-3"></th>
-                <th className="w-8 px-3 py-3"></th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="w-10 px-4 py-4 text-left"></th>
+                <th className="w-10 px-4 py-4 text-left"></th>
+                <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Task Name
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Type
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Priority
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Assigned To
                 </th>
-                <th className="w-12 px-3 py-3"></th>
+                <th className="w-12 px-4 py-4 text-left"></th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
               {filteredAndSortedTasks.map((task) => (
                 <tr
                   key={task.id}
-                  onClick={() => handleTaskClick(task)}
                   className={`group hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${
                     selectedTasks.includes(task.id)
                       ? "bg-blue-50 dark:bg-blue-900/20"
@@ -979,14 +979,14 @@ export function TasksListView({
                   onMouseLeave={() => setHoveredRow(null)}
                 >
                   {/* Drag Handle */}
-                  <td className="px-3 py-4">
+                  <td className="px-4 py-5">
                     <div className="flex items-center justify-center">
                       <GripVertical className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-move" />
                     </div>
                   </td>
 
                   {/* Checkbox */}
-                  <td className="px-3 py-4">
+                  <td className="px-4 py-5">
                     <Checkbox
                       checked={selectedTasks.includes(task.id)}
                       onCheckedChange={(checked) =>
@@ -997,62 +997,13 @@ export function TasksListView({
                   </td>
 
                   {/* Task Name */}
-                  <td className="px-4 py-4">
-                    <div className="flex items-start gap-3">
+                  <td className="px-6 py-5">
+                    <div className="flex items-start gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          {editingTask === task.id ? (
-                            <div className="flex items-center gap-2 flex-1">
-                              <Input
-                                value={editingTitle}
-                                onChange={(e) =>
-                                  setEditingTitle(e.target.value)
-                                }
-                                className="h-8 text-sm"
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    handleSaveEdit(task.id);
-                                  } else if (e.key === "Escape") {
-                                    handleCancelEdit();
-                                  }
-                                }}
-                                autoFocus
-                              />
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => handleSaveEdit(task.id)}
-                              >
-                                ✓
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={handleCancelEdit}
-                              >
-                                ✕
-                              </Button>
-                            </div>
-                          ) : (
-                            <>
-                              <h3
-                                className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400"
-                                onClick={() => handleInlineEdit(task)}
-                              >
-                                {task.title}
-                              </h3>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => handleInlineEdit(task)}
-                              >
-                                <Edit2 className="h-3 w-3" />
-                              </Button>
-                            </>
-                          )}
+                          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+                            {task.title}
+                          </h3>
                         </div>
                         {task.description && (
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
@@ -1084,7 +1035,7 @@ export function TasksListView({
                   </td>
 
                   {/* Type */}
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-5">
                     {task.type ? (
                       <Badge
                         variant="outline"
@@ -1102,9 +1053,13 @@ export function TasksListView({
                   </td>
 
                   {/* Status */}
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-5">
                     <Select
-                      value={task.status?.toString()}
+                      value={
+                        task.customStatus 
+                          ? availableStatuses.find(s => s.name === task.customStatus)?.id?.toString() || task.customStatus
+                          : task.status?.toString()
+                      }
                       onValueChange={(value) => {
                         handleStatusChange(task.id, value);
                       }}
@@ -1112,36 +1067,60 @@ export function TasksListView({
                       <SelectTrigger className="w-auto h-8 p-1 border-0 bg-transparent">
                         <Badge
                           variant="outline"
-                          className={`text-xs font-medium cursor-pointer ${getStatusColor(
+                          className={`text-xs font-medium cursor-pointer capitalize ${getStatusColor(
                             task.status
                           )}`}
                         >
-                          {getStatusLabel(task.status)}
+                          {task.customStatus || getStatusLabel(task.status)}
                         </Badge>
                       </SelectTrigger>
-                      <SelectContent className="z-50">
-                        <SelectItem value="1">Todo</SelectItem>
-                        <SelectItem value="2">In Progress</SelectItem>
-                        <SelectItem value="3">Done</SelectItem>
-                        {availableStatuses.filter(status =>
-                          !['TODO', 'IN_PROGRESS', 'DONE'].includes(status.name)
-                        ).map((status) => (
-                          <SelectItem key={status.name} value={status.name}>
-                            <div className="flex items-center space-x-2">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: status.color || '#gray' }}
-                              ></div>
-                              <span>{status.name}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
+                      <SelectContent>
+                        {/* Show all statuses from availableStatuses without duplicates */}
+                        {availableStatuses
+                          .filter((status, index, self) => 
+                            // Remove duplicates based on name
+                            index === self.findIndex(s => s.name?.toLowerCase() === status.name?.toLowerCase())
+                          )
+                          .map((status) => {
+                            // Map default statuses to their numeric values and colors
+                            const isDefaultStatus = ['TODO', 'IN_PROGRESS', 'DONE', 'Todo', 'In Progress', 'Done'].includes(status.name || '')
+                            
+                            let displayColor = status.color || '#6B7280'
+                            let statusValue = String(status.id || status.name)
+                            
+                            if (isDefaultStatus) {
+                              // Map to numeric values for default statuses
+                              if (status.name === 'Todo' || status.name === 'TODO') {
+                                statusValue = '1'
+                                displayColor = '#9CA3AF' // Gray
+                              } else if (status.name === 'In Progress' || status.name === 'IN_PROGRESS') {
+                                statusValue = '2'
+                                displayColor = '#F59E0B' // Orange
+                              } else if (status.name === 'Done' || status.name === 'DONE') {
+                                statusValue = '3'
+                                displayColor = '#10B981' // Green
+                              }
+                            }
+                            
+                            // Show all statuses with consistent colored dot format
+                            return (
+                              <SelectItem key={status.id || status.name} value={statusValue}>
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: displayColor }}
+                                  />
+                                  <span className="capitalize">{status.name}</span>
+                                </div>
+                              </SelectItem>
+                            )
+                          })}
                       </SelectContent>
                     </Select>
                   </td>
 
                   {/* Priority */}
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-5">
                     <Select
                       value={task.priority}
                       onValueChange={(value) =>
@@ -1169,15 +1148,15 @@ export function TasksListView({
                   </td>
 
                   {/* Assigned To */}
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-5">
                     {task.assignees && task.assignees.length > 0 ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         {task.assignees.slice(0, 2).map((assignee, index) => (
                           <div
                             key={assignee.id}
                             className="flex items-center gap-2"
                           >
-                            <Avatar className="h-5 w-5">
+                            <Avatar className="h-6 w-6">
                               <AvatarImage src={assignee.avatar} />
                               <AvatarFallback className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                                 {assignee.name.charAt(0).toUpperCase()}
@@ -1196,7 +1175,7 @@ export function TasksListView({
                       </div>
                     ) : task.assignee ? (
                       <div className="flex items-center gap-2">
-                        <Avatar className="h-5 w-5">
+                        <Avatar className="h-6 w-6">
                           <AvatarImage src={task.assignee.avatar} />
                           <AvatarFallback className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                             {task.assignee.name.charAt(0).toUpperCase()}
@@ -1214,15 +1193,13 @@ export function TasksListView({
                   </td>
 
                   {/* Actions */}
-                  <td className="px-3 py-4">
+                  <td className="px-4 py-5">
                     <div className="flex items-center justify-center">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className={`h-8 w-8 p-0 ${
-                          hoveredRow === task.id ? "opacity-100" : "opacity-0"
-                        } transition-opacity`}
-                        onClick={() => onTaskEdit?.(task)}
+                        className="h-8 w-8 p-0 opacity-100"
+                        onClick={() => handleTaskClick(task)}
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
@@ -1235,11 +1212,11 @@ export function TasksListView({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3">
+        <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-6 py-4">
           <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-            <span>{filteredAndSortedTasks.length} tasks total</span>
-            <div className="flex items-center gap-4">
-              <span>Auto-save enabled</span>
+            <span className="font-medium">{filteredAndSortedTasks.length} tasks total</span>
+            <div className="flex items-center gap-6">
+              <span className="text-xs">Auto-save enabled</span>
               {enableRealTimeUpdates && (
                 <div className="flex items-center gap-2">
                   <div
@@ -1249,7 +1226,7 @@ export function TasksListView({
                         : "bg-green-500"
                     }`}
                   ></div>
-                  <span className="text-xs">
+                  <span className="text-xs font-medium">
                     {isRefreshing ? "Refreshing..." : "Live updates"}
                   </span>
                 </div>
@@ -1259,8 +1236,8 @@ export function TasksListView({
                 projectId={projectId}
                 workflowStatuses={workflowStatuses}
               >
-                <Button variant="ghost" size="sm" className="h-8 px-2">
-                  <Plus className="h-4 w-4 mr-1" />
+                <Button variant="ghost" size="sm" className="h-8 px-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                  <Plus className="h-4 w-4 mr-2" />
                   Add task
                 </Button>
               </CreateTaskDialog>

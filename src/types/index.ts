@@ -337,9 +337,11 @@ export interface CreateTaskData {
   type?: string
   customType?: string
   assignees?: string[]
+  tags?: string[]
   subTasks?: Array<{
     title: string
     description?: string
+    userId?: string
   }>
   customFields?: Array<{
     fieldId: string

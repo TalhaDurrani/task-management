@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Users, CheckSquare, Clock } from "lucide-react"
 import Link from "next/link"
+import { WorkflowManager } from "@/components/workflows/workflow-manager"
 
 // Interfaces
 interface User {
@@ -190,7 +191,6 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       </div>
 
       {/* Team & Tasks */}
-      <div className="grid gap-6 md:grid-cols-1">
       <Card>
   <CardHeader>
     <CardTitle>Team Members</CardTitle>
@@ -272,47 +272,8 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   </CardContent>
 </Card>
 
-
-        {/* <Card>
-          <CardHeader>
-            <CardTitle>Recent Tasks</CardTitle>
-            <CardDescription>Latest tasks in this project</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {tasks.slice(0, 5).map((task) => (
-                <div key={task.id} className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="font-medium">{task.assignee || "Untitled Task"}</p>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <Badge
-                        variant={
-                          task.status === "DONE"
-                            ? "default"
-                            : task.status === "IN_PROGRESS"
-                            ? "secondary"
-                            : "outline"
-                        }
-                        className="text-xs"
-                      >
-                        {task.status}
-                      </Badge>
-                      {task.assignee && (
-                        <Badge variant="outline" className="text-xs">
-                          {task.assignee.name || task.assignee.email}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {tasks.length === 0 && (
-                <p className="text-sm text-muted-foreground">No tasks yet. Create your first task!</p>
-              )}
-            </div>
-          </CardContent>
-        </Card> */}
-      </div>
+      {/* Workflow Management */}
+      <WorkflowManager projectId={project.id} />
     </div>
   )
 }

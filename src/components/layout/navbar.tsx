@@ -114,7 +114,7 @@ export function Navbar() {
               <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
                 <Zap className="h-3 w-3 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-sm">TaskFlow</span>
+              <span className="font-semibold text-sm">Sigma Flow</span>
             </div>
 
             {/* Search - Desktop */}

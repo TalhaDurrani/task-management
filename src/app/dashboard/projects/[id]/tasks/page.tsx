@@ -13,12 +13,20 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Plus, ArrowLeft, Clock, List, Table, Circle, AlertCircle, CheckCircle2, Star, Zap, Target, Flag } from "lucide-react"
+import { Plus, ArrowLeft, Clock, List, Table, Circle, AlertCircle, CheckCircle2, Star, Zap, Target, Flag, Columns, X } from "lucide-react"
 import Link from "next/link"
 
 export const dynamic = 'force-dynamic'
@@ -93,7 +101,9 @@ export default function TasksPage({ params }: TasksPageProps) {
       title: task.title || 'Untitled Task',
       description: task.description,
       type: task.type,
-      status: mapStatusToUI(task.status),
+      status: task.status, // Keep numeric status (1/2/3) for proper column matching
+      customStatus: task.customStatus, // Include custom status
+      statusCategory: task.statusCategory, // Include status category
       priority: task.priority || 'not setted', // Default priority since it's not in the API
       labels: task.label ? task.label.split(',').map((l: string) => l.trim()) : [],
       projectId: task.projectId,
@@ -154,6 +164,30 @@ export default function TasksPage({ params }: TasksPageProps) {
             const transformedTasks = transformTaskData(tasksData)
             setTasks(transformedTasks)
           }
+
+          // Load workflows for this project
+          const workflowsResponse = await fetch(`/api/workflows?projectId=${params.id}`)
+          if (workflowsResponse.ok) {
+            const workflowsData = await workflowsResponse.json()
+            console.log('📁 Loaded workflows:', workflowsData.length)
+            setSavedWorkflows(workflowsData)
+            
+            // Auto-select the default workflow or first workflow
+            const defaultWorkflow = workflowsData.find((w: any) => w.isDefault) || workflowsData[0]
+            if (defaultWorkflow) {
+              console.log('✅ Auto-loading default workflow:', defaultWorkflow.name)
+              loadWorkflow(defaultWorkflow)
+            }
+          }
+
+          // Load custom statuses for the workspace
+          if (result.user.workspaceId) {
+            const statusesResponse = await fetch(`/api/custom-statuses?workspaceId=${result.user.workspaceId}`)
+            if (statusesResponse.ok) {
+              const statusesData = await statusesResponse.json()
+              setCustomStatuses(statusesData)
+            }
+          }
         } else {
           // Redirect to sign-in if not authenticated
           window.location.href = "/auth/signin"
@@ -188,41 +222,112 @@ export default function TasksPage({ params }: TasksPageProps) {
 
   const handleTaskStatusUpdate = async (taskId: string, newStatus: string | number) => {
     try {
-      // Handle both numeric column IDs (from Kanban) and string statuses (from List view)
-      let apiStatus: string | number = newStatus
+      console.log('🔄 handleTaskStatusUpdate called:', { taskId: taskId.slice(0, 8), newStatus })
+      
+      // Handle both column IDs (numeric or UUID) and string statuses
+      let apiStatus: number = 1 // Default to BACKLOG
+      let customStatusToSend: string | undefined = undefined
 
-      // If newStatus is a string representation of a number (from Kanban column ID)
-      if (typeof newStatus === 'string' && /^\d+$/.test(newStatus)) {
-        // Convert column ID (1, 2, 3) to numeric status
-        apiStatus = parseInt(newStatus, 10)
+      // Get columns from either customWorkflowColumns or the selected workflow
+      const selectedWorkflow = savedWorkflows.find(w => w.id === currentWorkflowId)
+      const workflowColumns = customWorkflowColumns.length > 0 
+        ? customWorkflowColumns 
+        : (selectedWorkflow?.columns || [])
+
+      console.log('📋 Available columns:', workflowColumns.map((c: any) => ({ id: c.id, title: c.title })))
+
+      // First, check if newStatus matches a column ID or title in workflow columns
+      const matchedColumn = workflowColumns.find((col: any) => 
+        String(col.id) === String(newStatus) || col.title === newStatus
+      )
+
+      console.log('🎯 Matched column:', matchedColumn ? { id: matchedColumn.id, title: matchedColumn.title, category: matchedColumn.category } : 'NONE')
+
+      if (matchedColumn) {
+        // Found a matching column
+        customStatusToSend = matchedColumn.title
+        
+        // Map to numeric status based on column title or stored category
+        if (matchedColumn.title === 'Todo' || matchedColumn.title === 'Backlog') {
+          apiStatus = 1
+        } else if (matchedColumn.title === 'In Progress' || matchedColumn.title === 'In Development') {
+          apiStatus = 2
+        } else if (matchedColumn.title === 'Done' || matchedColumn.title === 'Completed') {
+          apiStatus = 3
+        } else {
+          // For custom columns, use stored category or look it up
+          const category = (matchedColumn as any).category || 
+            customStatuses.find(s => s.name === matchedColumn.title || s.id === matchedColumn.id)?.category
+          
+          if (category) {
+            // Map category to numeric status
+            switch (category) {
+              case 'BACKLOG':
+                apiStatus = 1
+                break
+              case 'IN_PROGRESS':
+                apiStatus = 2
+                break
+              case 'COMPLETED':
+                apiStatus = 3
+                break
+              case 'ON_HOLD':
+                apiStatus = 1 // Treat ON_HOLD as BACKLOG
+                break
+              default:
+                apiStatus = 1
+            }
+          } else {
+            // Default to 1 if we can't find the category
+            apiStatus = 1
+          }
+        }
+      } 
+      // Handle numeric status values (1, 2, 3)
+      else if (typeof newStatus === 'number' || (typeof newStatus === 'string' && /^\d+$/.test(newStatus))) {
+        apiStatus = typeof newStatus === 'number' ? newStatus : parseInt(newStatus, 10)
+        
+        // Get the column title for this numeric status
+        const col = customWorkflowColumns.find(c => c.id === apiStatus)
+        if (col && !['Todo', 'In Progress', 'Done'].includes(col.title)) {
+          customStatusToSend = col.title
+        }
       }
-      // If newStatus is a string status name (from List view)
+      // Handle string status names
       else if (typeof newStatus === 'string') {
-        // Convert string status to numeric
-        if (newStatus === 'todo' || newStatus === 'TODO') apiStatus = 1
-        else if (newStatus === 'in-progress' || newStatus === 'in_progress' || newStatus === 'IN_PROGRESS') apiStatus = 2
-        else if (newStatus === 'done' || newStatus === 'DONE') apiStatus = 3
-        else apiStatus = 1 // Default fallback
+        const normalized = newStatus.toLowerCase()
+        if (normalized === 'todo' || normalized === 'backlog') {
+          apiStatus = 1
+        } else if (normalized === 'in-progress' || normalized === 'in_progress' || normalized === 'in progress') {
+          apiStatus = 2
+        } else if (normalized === 'done' || normalized === 'completed') {
+          apiStatus = 3
+        } else {
+          // Treat as custom status name
+          customStatusToSend = newStatus
+          apiStatus = 1
+        }
       }
 
-      // Update task status via API
+      // Build payload
+      const payload: any = { status: apiStatus }
+      if (customStatusToSend) {
+        payload.customStatus = customStatusToSend
+      }
+
+      console.log('Updating task status:', { taskId, newStatus, payload })
+
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          status: apiStatus
-        })
+        body: JSON.stringify(payload)
       })
 
       if (response.ok) {
-        // Instead of calling handleTaskCreated(), directly update the parent's task state
-        setTasks(prevTasks => prevTasks.map(task =>
-          task.id === taskId
-            ? { ...task, status: mapStatusToUI(apiStatus) }
-            : task
-        ))
+        // Refresh tasks to get updated state from server
+        await handleTaskCreated()
       } else {
         const error = await response.json()
         console.error('Failed to update task status:', error)
@@ -286,6 +391,33 @@ export default function TasksPage({ params }: TasksPageProps) {
         if (defaultWorkflow && !customWorkflowColumns.length) {
           setCustomWorkflowColumns(defaultWorkflow.columns)
           setCurrentWorkflowId(defaultWorkflow.id)
+        }
+        // If no workflows exist and no custom columns, initialize with default columns
+        else if (workflowsWithIcons.length === 0 && !customWorkflowColumns.length) {
+          const defaultColumns = [
+            {
+              id: 1,
+              title: "Todo",
+              color: "bg-gray-100 dark:bg-gray-800",
+              icon: Circle,
+              count: 0
+            },
+            {
+              id: 2,
+              title: "In Progress",
+              color: "bg-yellow-100 dark:bg-yellow-900",
+              icon: AlertCircle,
+              count: 0
+            },
+            {
+              id: 3,
+              title: "Done",
+              color: "bg-green-100 dark:bg-green-900",
+              icon: CheckCircle2,
+              count: 0
+            }
+          ]
+          setCustomWorkflowColumns(defaultColumns)
         }
       }
     } catch (error) {
@@ -360,15 +492,42 @@ export default function TasksPage({ params }: TasksPageProps) {
     setCurrentWorkflowId(workflow.id)
   }
 
+  const handleWorkflowChange = (workflowId: string) => {
+    const workflow = savedWorkflows.find(w => w.id === workflowId)
+    if (workflow) {
+      loadWorkflow(workflow)
+    }
+  }
+
   const addCustomWorkflowColumn = async (status: any) => {
-    // Create a column object for the custom status with numeric ID
+    console.log('➕ Adding custom workflow column:', { 
+      id: status.id, 
+      name: status.name, 
+      category: status.category 
+    })
+    
+    // Use the CustomStatus UUID as the column ID for uniqueness
+    // Map category to get the appropriate icon
+    let icon = Circle
+    if (status.category === 'IN_PROGRESS') {
+      icon = AlertCircle
+    } else if (status.category === 'COMPLETED') {
+      icon = CheckCircle2
+    } else if (status.category === 'ON_HOLD') {
+      icon = Flag
+    }
+    
+    // Create a column object for the custom status
     const newColumn = {
-      id: status.name === 'Todo' ? 1 : status.name === 'In Progress' ? 2 : status.name === 'Done' ? 3 : 4, // Map to numeric status
+      id: status.id || Date.now().toString(), // Use CustomStatus UUID or timestamp
       title: status.name,
-      color: status.color ? `bg-[${status.color}]` : 'bg-blue-100 dark:bg-blue-900',
-      icon: Circle, // Default icon, could be enhanced later
+      color: status.color || '#6B7280', // Use hex color directly
+      icon: icon,
+      category: status.category, // Store category for status mapping
       count: 0
     }
+    
+    console.log('📦 New column object:', newColumn)
 
     let updatedColumns = [...customWorkflowColumns]
 
@@ -378,30 +537,37 @@ export default function TasksPage({ params }: TasksPageProps) {
         {
           id: 1,
           title: "Todo",
-          color: "bg-gray-100 dark:bg-gray-800",
+          color: "#9CA3AF",
           icon: Circle,
           count: 0
         },
         {
           id: 2,
           title: "In Progress",
-          color: "bg-yellow-100 dark:bg-yellow-900",
+          color: "#F59E0B",
           icon: AlertCircle,
           count: 0
         },
         {
           id: 3,
           title: "Done",
-          color: "bg-green-100 dark:bg-green-900",
+          color: "#10B981",
           icon: CheckCircle2,
           count: 0
         }
       ]
     }
 
-    // Check if column already exists
-    if (!updatedColumns.some(col => col.id === newColumn.id)) {
+    // Check if column already exists by title or id
+    const columnExists = updatedColumns.some(
+      col => col.title === newColumn.title || col.id === newColumn.id
+    )
+    
+    if (!columnExists) {
       updatedColumns.push(newColumn)
+    } else {
+      console.log('Column already exists:', newColumn.title)
+      return // Don't save if already exists
     }
 
     setCustomWorkflowColumns(updatedColumns)
@@ -411,16 +577,67 @@ export default function TasksPage({ params }: TasksPageProps) {
       if (currentWorkflowId) {
         // Update existing workflow
         await updateWorkflow(currentWorkflowId, updatedColumns)
+        
+        // IMPORTANT: Update the savedWorkflows state so kanban board sees the changes
+        setSavedWorkflows(prev => prev.map(w => 
+          w.id === currentWorkflowId 
+            ? { 
+                ...w, 
+                columns: updatedColumns.map(col => ({
+                  ...col,
+                  icon: getIconName(col.icon) // Convert icon component to name for storage
+                }))
+              }
+            : w
+        ))
       } else {
         // Create a new temporary workflow and set it as default if none exists
         const tempWorkflow = await saveWorkflow(`Auto-saved Workflow - ${new Date().toLocaleDateString()}`, true)
         setCurrentWorkflowId(tempWorkflow.id)
       }
+      
+      console.log('✅ Workflow updated successfully with', updatedColumns.length, 'columns')
     } catch (error) {
       console.error('Failed to auto-save workflow:', error)
     }
 
-    setWorkflowDialogOpen(false)
+    // Don't close the dialog - allow user to add more columns
+    // setWorkflowDialogOpen(false)
+  }
+
+  const deleteCustomWorkflowColumn = async (columnId: string | number) => {
+    console.log('🗑️ Deleting column:', columnId)
+    
+    // Remove the column from customWorkflowColumns
+    const updatedColumns = customWorkflowColumns.filter(col => col.id !== columnId)
+    
+    console.log('📋 Remaining columns:', updatedColumns.length)
+    setCustomWorkflowColumns(updatedColumns)
+
+    // Auto-save the workflow
+    try {
+      if (currentWorkflowId) {
+        // Update existing workflow
+        await updateWorkflow(currentWorkflowId, updatedColumns)
+        
+        // Update the savedWorkflows state so kanban board sees the changes
+        setSavedWorkflows(prev => prev.map(w => 
+          w.id === currentWorkflowId 
+            ? { 
+                ...w, 
+                columns: updatedColumns.map(col => ({
+                  ...col,
+                  icon: getIconName(col.icon)
+                }))
+              }
+            : w
+        ))
+        
+        console.log('✅ Column deleted and workflow updated')
+      }
+    } catch (error) {
+      console.error('Failed to update workflow after deletion:', error)
+    }
   }
 
   if (isLoading) {
@@ -491,55 +708,62 @@ export default function TasksPage({ params }: TasksPageProps) {
         </TabsList>
         
         <TabsContent value="kanban">
-          <KanbanBoard 
-            tasks={tasks} 
-            customColumns={customWorkflowColumns.length > 0 ? customWorkflowColumns : [
-              {
-                id: 1,
-                title: "Todo",
-                color: "bg-gray-100 dark:bg-gray-800",
-                icon: Circle,
-                count: 0
-              },
-              {
-                id: 2,
-                title: "In Progress",
-                color: "bg-yellow-100 dark:bg-yellow-900",
-                icon: AlertCircle,
-                count: 0
-              },
-              {
-                id: 3,
-                title: "Done",
-                color: "bg-green-100 dark:bg-green-900",
-                icon: CheckCircle2,
-                count: 0
-              }
-            ]}
-            onTaskMove={(taskId, newStatus) => {
-              // Update task status via API and refresh
-              handleTaskStatusUpdate(taskId, newStatus)
-            }}
-            onTaskEdit={(task) => {
-              // Refresh tasks after edit
-              handleTaskCreated()
-            }}
-            onTaskDelete={(taskId) => {
-              // Refresh tasks after delete
-              handleTaskCreated()
-            }}
-            onCreateTask={(status) => {
-              // Refresh tasks after create
-              handleTaskCreated()
-            }}
-            onColumnReorder={(columns) => {
-              setCustomWorkflowColumns(columns)
-              // Auto-save if we have a current workflow
-              if (currentWorkflowId) {
-                updateWorkflow(currentWorkflowId, columns)
-              }
-            }}
-          />
+          <div className="space-y-4">
+            {/* Workflow Selector */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Columns className="h-4 w-4" />
+                <span className="text-sm font-medium">Workflow:</span>
+                <Select value={currentWorkflowId || ""} onValueChange={handleWorkflowChange}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Select workflow" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {savedWorkflows.map((workflow: any) => (
+                      <SelectItem key={workflow.id} value={workflow.id}>
+                        {workflow.name}
+                        {workflow.isDefault && " (Default)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button variant="outline" size="sm" onClick={() => setWorkflowManagerOpen(true)}>
+                Manage Workflows
+              </Button>
+            </div>
+
+            <KanbanBoard
+              tasks={tasks}
+              workflows={savedWorkflows}
+              selectedWorkflowId={currentWorkflowId || undefined}
+              onWorkflowChange={handleWorkflowChange}
+              onTaskMove={(taskId, newStatus) => {
+                // Update task status via API and refresh
+                handleTaskStatusUpdate(taskId, newStatus)
+              }}
+              onTaskEdit={(task) => {
+                // Refresh tasks after edit
+                handleTaskCreated()
+              }}
+              onTaskDelete={(taskId) => {
+                // Refresh tasks after delete
+                handleTaskCreated()
+              }}
+              onCreateTask={(status) => {
+                // Refresh tasks after create
+                handleTaskCreated()
+              }}
+              onColumnReorder={(columns) => {
+                setCustomWorkflowColumns(columns)
+                // Auto-save if we have a current workflow
+                if (currentWorkflowId) {
+                  updateWorkflow(currentWorkflowId, columns)
+                }
+              }}
+            />
+          </div>
         </TabsContent>
         
         <TabsContent value="list">
@@ -561,7 +785,11 @@ export default function TasksPage({ params }: TasksPageProps) {
             projectId={params.id}
             enableRealTimeUpdates={true}
             refreshInterval={15000} // 15 seconds for project-specific view
-            workflowStatuses={customWorkflowColumns.length > 0 ? customWorkflowColumns : undefined}
+            workflowStatuses={
+              customWorkflowColumns.length > 0
+                ? customWorkflowColumns
+                : undefined
+            }
           />
         </TabsContent>
         
@@ -579,31 +807,86 @@ export default function TasksPage({ params }: TasksPageProps) {
           <DialogHeader>
             <DialogTitle>Create Custom Work Flow</DialogTitle>
             <DialogDescription>
-              Select a custom status to add as a new column to your workflow
+              Select custom statuses to add as columns to your workflow. Click Done when finished.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Show current columns */}
+            {customWorkflowColumns.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Current Columns ({customWorkflowColumns.length}):</p>
+                <div className="flex flex-wrap gap-2">
+                  {customWorkflowColumns.map((col) => {
+                    // Extract hex color from various formats
+                    let hexColor = '#6B7280' // Default gray
+                    if (col.color) {
+                      if (col.color.startsWith('#')) {
+                        hexColor = col.color
+                      } else if (col.color.startsWith('bg-[') && col.color.includes(']')) {
+                        hexColor = col.color.match(/bg-\[(.*?)\]/)?.[1] || '#6B7280'
+                      }
+                    }
+                    
+                    return (
+                      <div
+                        key={col.id}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-muted group hover:bg-muted/80 transition-colors"
+                      >
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: hexColor }}
+                        />
+                        <span className="capitalize">{col.title}</span>
+                        <button
+                          onClick={() => deleteCustomWorkflowColumn(col.id)}
+                          className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+                          title="Delete column"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            
             {customStatuses.length === 0 ? (
               <p className="text-muted-foreground">No custom statuses found. Create some in the Custom Fields page first.</p>
             ) : (
-              <div className="grid gap-2">
-                {customStatuses.map((status: any) => (
-                  <Button
-                    key={status.id || status.name}
-                    variant="outline"
-                    className="justify-start"
-                    onClick={() => addCustomWorkflowColumn(status)}
-                  >
-                    <div 
-                      className="w-3 h-3 rounded-full mr-2" 
-                      style={{ backgroundColor: status.color || '#gray' }}
-                    />
-                    {status.name}
-                  </Button>
-                ))}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Add Custom Status Columns:</p>
+                <div className="grid gap-2 max-h-[300px] overflow-y-auto">
+                  {customStatuses.map((status: any) => {
+                    const alreadyAdded = customWorkflowColumns.some(
+                      col => col.title === status.name || col.id === status.id
+                    )
+                    return (
+                      <Button
+                        key={status.id || status.name}
+                        variant={alreadyAdded ? "secondary" : "outline"}
+                        className="justify-start"
+                        onClick={() => addCustomWorkflowColumn(status)}
+                        disabled={alreadyAdded}
+                      >
+                        <div 
+                          className="w-3 h-3 rounded-full mr-2" 
+                          style={{ backgroundColor: status.color || '#gray' }}
+                        />
+                        {status.name}
+                        {alreadyAdded && <span className="ml-auto text-xs text-muted-foreground">✓ Added</span>}
+                      </Button>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </div>
+          <DialogFooter>
+            <Button onClick={() => setWorkflowDialogOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

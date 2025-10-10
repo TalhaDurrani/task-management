@@ -5,7 +5,7 @@ import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { format } from "date-fns"
-import { CalendarIcon, Plus, X, Upload, User } from "lucide-react"
+import { CalendarIcon, Plus, X, Upload, User, Tag as TagIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,23 +60,25 @@ const formSchema = z.object({
   customType: z.string().optional(),
   projectId: z.string().min(1, "Project is required"),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
-  status: z.union([z.string(), z.number()]).refine((val) => val !== "", "Status is required"),
+  status: z.string().min(1, "Status is required"),
   customStatus: z.string().optional(),
   dueDate: z.date().optional(),
   assignees: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
   subTasks: z.array(
     z.object({
       title: z.string().min(1, "Subtask title is required"),
       description: z.string().optional(),
-      assigneeId: z.string().optional(),
+      userId: z.string().optional(),
+      completed: z.boolean().optional(),
     })
   ).optional(),
   attachments: z.array(
     z.object({
-      fileName: z.string(),
-      filePath: z.string(),
-      fileSize: z.number(),
-      mimeType: z.string(),
+      name: z.string(),
+      url: z.string(),
+      type: z.string(),
+      size: z.number(),
     })
   ).optional(),
 })
@@ -105,6 +107,12 @@ interface TaskStatus {
   category?: string
 }
 
+interface Tag {
+  id: string
+  name: string
+  color?: string | null
+}
+
 interface CreateTaskDialogProps {
   children?: React.ReactNode
   projectId?: string
@@ -124,7 +132,9 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
   const [users, setUsers] = useState<User[]>([])
   const [types, setTypes] = useState<TaskType[]>([])
   const [statuses, setStatuses] = useState<TaskStatus[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [assigneeOpen, setAssigneeOpen] = useState(false)
+  const [tagOpen, setTagOpen] = useState(false)
   const [dateOpen, setDateOpen] = useState(false)
 
   const form = useForm<FormData>({
@@ -138,6 +148,7 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
       status: "",
       dueDate: undefined,
       assignees: [],
+      tags: [],
       subTasks: [],
       attachments: [],
     },
@@ -154,6 +165,7 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
       loadProjects()
       loadUsers()
       loadTypesAndStatuses()
+      loadTags()
     }
   }, [open])
 
@@ -225,6 +237,28 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
       }
     } catch (error) {
       console.error("Failed to load types and statuses:", error)
+    }
+  }
+
+  const loadTags = async () => {
+    try {
+      // Get current user to fetch workspace
+      const userResponse = await fetch("/api/auth/me")
+      let workspaceId = null
+      if (userResponse.ok) {
+        const userData = await userResponse.json()
+        workspaceId = userData.workspaceId
+      }
+
+      if (workspaceId) {
+        const response = await fetch(`/api/tags?workspaceId=${workspaceId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setTags(Array.isArray(data) ? data : [])
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load tags:", error)
     }
   }
 
@@ -792,6 +826,85 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
               )}
             />
 
+            {/* Tags */}
+            <FormField
+              control={form.control}
+              name="tags"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tags</FormLabel>
+                  <Popover open={tagOpen} onOpenChange={setTagOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        className={cn(
+                          "w-full justify-between",
+                          !field.value?.length && "text-muted-foreground"
+                        )}
+                        onClick={() => setTagOpen(!tagOpen)}
+                      >
+                        {field.value?.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {field.value.map((tagId) => {
+                              const tag = tags.find(t => t.id === tagId)
+                              return tag ? (
+                                <Badge key={tagId} variant="secondary" className="text-xs flex items-center gap-1">
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: tag.color || '#gray' }}
+                                  />
+                                  {tag.name}
+                                </Badge>
+                              ) : null
+                            })}
+                          </div>
+                        ) : (
+                          "Select tags..."
+                        )}
+                        <TagIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0">
+                      <Command>
+                        <CommandInput placeholder="Search tags..." />
+                        <CommandEmpty>No tags found.</CommandEmpty>
+                        <CommandGroup>
+                          {tags.map((tag) => (
+                            <CommandItem
+                              key={tag.id}
+                              value={tag.id}
+                              onSelect={() => {
+                                const currentTags = field.value || []
+                                const isSelected = currentTags.includes(tag.id)
+                                if (isSelected) {
+                                  field.onChange(currentTags.filter(id => id !== tag.id))
+                                } else {
+                                  field.onChange([...currentTags, tag.id])
+                                }
+                              }}
+                            >
+                              <Checkbox
+                                checked={field.value?.includes(tag.id) || false}
+                                className="mr-2"
+                              />
+                              <div 
+                                className="w-2 h-2 rounded-full mr-2" 
+                                style={{ backgroundColor: tag.color || '#gray' }}
+                              />
+                              {tag.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             {/* Subtasks Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -800,7 +913,7 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => appendSubTask({ title: "", description: "" })}
+                  onClick={() => appendSubTask({ title: "" })}
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Add Subtask
@@ -836,7 +949,7 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                     />
                     <FormField
                       control={form.control}
-                      name={`subTasks.${index}.assigneeId`}
+                      name={`subTasks.${index}.userId`}
                       render={({ field }) => (
                         <FormItem>
                           <Select onValueChange={field.onChange} value={field.value}>

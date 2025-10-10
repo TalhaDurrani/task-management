@@ -39,9 +39,16 @@ interface CustomStatus {
   category: string
 }
 
+interface Tag {
+  id: string
+  name: string
+  color: string
+}
+
 export default function CustomFieldsPage() {
   const [types, setTypes] = useState<{ default: CustomType[], custom: CustomType[] }>({ default: [], custom: [] })
   const [statuses, setStatuses] = useState<CustomStatus[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [isLoading, setIsLoading] = useState(true)
   
   // Type dialog state
@@ -56,6 +63,12 @@ export default function CustomFieldsPage() {
   const [statusName, setStatusName] = useState("")
   const [statusColor, setStatusColor] = useState("#34D399")
   const [statusCategory, setStatusCategory] = useState("BACKLOG")
+  
+  // Tag dialog state
+  const [tagDialogOpen, setTagDialogOpen] = useState(false)
+  const [editingTag, setEditingTag] = useState<Tag | null>(null)
+  const [tagName, setTagName] = useState("")
+  const [tagColor, setTagColor] = useState("#3B82F6")
 
   const loadData = async () => {
     setIsLoading(true)
@@ -86,6 +99,14 @@ export default function CustomFieldsPage() {
         const statusesData = await statusesResponse.json()
         console.log("Loaded statuses:", statusesData)
         setStatuses(statusesData)
+      }
+
+      // Load tags
+      const tagsResponse = await fetch(`/api/tags?workspaceId=${workspaceId}`)
+      if (tagsResponse.ok) {
+        const tagsData = await tagsResponse.json()
+        console.log("Loaded tags:", tagsData)
+        setTags(tagsData)
       }
     } catch (error) {
       console.error("Failed to load data:", error)
@@ -382,6 +403,118 @@ export default function CustomFieldsPage() {
     }
   }
 
+  // Tag management functions
+  const handleCreateTag = async () => {
+    if (!tagName.trim()) {
+      toast.error("Tag name is required")
+      return
+    }
+
+    try {
+      const userResponse = await fetch("/api/auth/me")
+      let workspaceId = null
+      if (userResponse.ok) {
+        const userData = await userResponse.json()
+        workspaceId = userData.workspaceId
+      }
+
+      if (!workspaceId) {
+        toast.error("No workspace found")
+        return
+      }
+
+      const response = await fetch("/api/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: tagName,
+          color: tagColor,
+          workspaceId: workspaceId
+        }),
+      })
+
+      if (response.ok) {
+        const newTag = await response.json()
+        setTags(prev => [...prev, newTag])
+        toast.success("Tag created successfully")
+        setTagDialogOpen(false)
+        resetTagForm()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Failed to create tag")
+      }
+    } catch (error) {
+      console.error("Error creating tag:", error)
+      toast.error("An error occurred")
+    }
+  }
+
+  const handleUpdateTag = async () => {
+    if (!editingTag || !tagName.trim()) return
+
+    try {
+      const response = await fetch("/api/tags", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingTag.id,
+          name: tagName,
+          color: tagColor
+        }),
+      })
+
+      if (response.ok) {
+        const updatedTag = await response.json()
+        setTags(prev => prev.map(t => t.id === updatedTag.id ? updatedTag : t))
+        toast.success("Tag updated successfully")
+        setTagDialogOpen(false)
+        resetTagForm()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Failed to update tag")
+      }
+    } catch (error) {
+      console.error("Error updating tag:", error)
+      toast.error("An error occurred")
+    }
+  }
+
+  const handleDeleteTag = async (tagId: string, tagName: string) => {
+    if (!confirm(`Are you sure you want to delete "${tagName}"? This cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/tags?id=${tagId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setTags(prev => prev.filter(t => t.id !== tagId))
+        toast.success("Tag deleted successfully")
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Failed to delete tag")
+      }
+    } catch (error) {
+      console.error("Error deleting tag:", error)
+      toast.error("An error occurred")
+    }
+  }
+
+  const openEditTag = (tag: Tag) => {
+    setEditingTag(tag)
+    setTagName(tag.name)
+    setTagColor(tag.color)
+    setTagDialogOpen(true)
+  }
+
+  const resetTagForm = () => {
+    setEditingTag(null)
+    setTagName("")
+    setTagColor("#3B82F6")
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -411,6 +544,10 @@ export default function CustomFieldsPage() {
           <TabsTrigger value="statuses">
             <CircleDot className="mr-2 h-4 w-4" />
             Task Statuses
+          </TabsTrigger>
+          <TabsTrigger value="tags">
+            <Tag className="mr-2 h-4 w-4" />
+            Tags
           </TabsTrigger>
         </TabsList>
 
@@ -702,6 +839,122 @@ export default function CustomFieldsPage() {
                     </div>
                   )
                 })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tags Tab */}
+        <TabsContent value="tags" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Tags</CardTitle>
+                  <CardDescription>
+                    Create custom tags to organize and categorize your tasks
+                  </CardDescription>
+                </div>
+                <Dialog open={tagDialogOpen} onOpenChange={(open) => {
+                  setTagDialogOpen(open)
+                  if (!open) resetTagForm()
+                }}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Tag
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{editingTag ? "Edit" : "Create"} Tag</DialogTitle>
+                      <DialogDescription>
+                        {editingTag ? "Update the tag details" : "Add a new tag to your workspace"}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="tag-name">Tag Name</Label>
+                        <Input
+                          id="tag-name"
+                          placeholder="e.g., Frontend, Backend, Urgent"
+                          value={tagName}
+                          onChange={(e) => setTagName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="tag-color">Color</Label>
+                        <div className="flex items-center space-x-2">
+                          <Input
+                            id="tag-color"
+                            type="color"
+                            value={tagColor}
+                            onChange={(e) => setTagColor(e.target.value)}
+                            className="w-20 h-10"
+                          />
+                          <Input
+                            value={tagColor}
+                            onChange={(e) => setTagColor(e.target.value)}
+                            placeholder="#3B82F6"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setTagDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={editingTag ? handleUpdateTag : handleCreateTag}>
+                        {editingTag ? "Update" : "Create"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {tags.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center text-muted-foreground">
+                      No tags yet. Click "Add Tag" to create one.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {tags.map((tag) => (
+                      <Card key={tag.id}>
+                        <CardContent className="p-4 flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <div 
+                              className="w-4 h-4 rounded-full" 
+                              style={{ backgroundColor: tag.color }}
+                            />
+                            <span className="font-medium capitalize">{tag.name}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEditTag(tag)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              onClick={() => handleDeleteTag(tag.id, tag.name)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
