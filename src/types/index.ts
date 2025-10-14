@@ -219,7 +219,9 @@ export interface Attachment {
   id: string
   taskId: string
   fileName: string
-  filePath: string
+  fileData: string
+  fileType: string
+  fileExtension: string
   fileSize: number
   mimeType: string
   uploadedBy: string
@@ -349,7 +351,9 @@ export interface CreateTaskData {
   }>
   attachments?: Array<{
     fileName: string
-    filePath: string
+    fileData: string
+    fileType: string
+    fileExtension: string
     fileSize: number
     mimeType: string
   }>

@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { format } from "date-fns"
-import { CalendarIcon, Plus, X, Upload, User } from "lucide-react"
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { format } from "date-fns";
+import { CalendarIcon, Plus, X, Upload, User } from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Calendar } from "@/components/ui/calendar"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -28,29 +28,29 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form"
+} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"
+} from "@/components/ui/popover";
 import {
   Command,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
-} from "@/components/ui/command"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 // Simplified form schema - KISS principle
 const formSchema = z.object({
@@ -62,48 +62,52 @@ const formSchema = z.object({
   status: z.string(),
   dueDate: z.date().optional(),
   assignees: z.array(z.string()),
-})
+});
 
-type FormData = z.infer<typeof formSchema>
+type FormData = z.infer<typeof formSchema>;
 
 interface Project {
-  id: string
-  title: string
+  id: string;
+  title: string;
 }
 
 interface User {
-  id: string
-  name: string
-  email: string
+  id: string;
+  name: string;
+  email: string;
 }
 
 interface CreateTaskDialogProps {
-  children?: React.ReactNode
-  projectId?: string
-  onTaskCreated?: () => void
+  children?: React.ReactNode;
+  projectId?: string;
+  onTaskCreated?: () => void;
 }
 
-export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateTaskDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [assigneeOpen, setAssigneeOpen] = useState(false)
-  const [dateOpen, setDateOpen] = useState(false)
+export function CreateTaskDialog({
+  children,
+  projectId,
+  onTaskCreated,
+}: CreateTaskDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
 
   // Simplified types and statuses - KISS principle
   const taskTypes = [
-    { name: 'TASK', label: 'Task' },
-    { name: 'BUG', label: 'Bug' },
-    { name: 'FEATURE', label: 'Feature' },
-    { name: 'EPIC', label: 'Epic' },
-  ]
+    { name: "TASK", label: "Task" },
+    { name: "BUG", label: "Bug" },
+    { name: "FEATURE", label: "Feature" },
+    { name: "EPIC", label: "Epic" },
+  ];
 
   const taskStatuses = [
-    { name: 'TODO', label: 'To Do' },
-    { name: 'IN_PROGRESS', label: 'In Progress' },
-    { name: 'DONE', label: 'Done' },
-  ]
+    { name: "TODO", label: "To Do" },
+    { name: "IN_PROGRESS", label: "In Progress" },
+    { name: "DONE", label: "Done" },
+  ];
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -116,48 +120,49 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
       status: "TODO",
       assignees: [],
     },
-  })
+  });
 
   useEffect(() => {
     if (open) {
-      loadProjects()
-      loadUsers()
+      loadProjects();
+      loadUsers();
     }
-  }, [open])
+  }, [open]);
 
   useEffect(() => {
     if (projectId) {
-      form.setValue("projectId", projectId)
+      form.setValue("projectId", projectId);
     }
-  }, [projectId, form])
+  }, [projectId, form]);
 
   const loadProjects = async () => {
     try {
-      const response = await fetch("/api/projects")
+      const response = await fetch("/api/projects");
       if (response.ok) {
-        const data = await response.json()
-        setProjects(Array.isArray(data) ? data : (data.projects || []))
+        const data = await response.json();
+        setProjects(Array.isArray(data) ? data : data.projects || []);
       }
     } catch (error) {
-      console.error("Failed to load projects:", error)
+      console.error("Failed to load projects:", error);
     }
-  }
+  };
 
   const loadUsers = async () => {
     try {
-      const response = await fetch("/api/users/assignable")
+      const response = await fetch("/api/users/assignable");
       if (response.ok) {
-        const data = await response.json()
-        const usersData = Array.isArray(data) ? data : (data.users || [])
-        setUsers(usersData)
+        const data = await response.json();
+        const usersData = Array.isArray(data) ? data : data.users || [];
+        setUsers(usersData);
       }
     } catch (error) {
-      console.error("Failed to load users:", error)
+      console.error("Failed to load users:", error);
     }
-  }
+  };
 
   const onSubmit = async (data: FormData) => {
-    setIsLoading(true)
+    
+    setIsLoading(true);
     try {
       const response = await fetch("/api/tasks", {
         method: "POST",
@@ -165,26 +170,26 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
           "Content-Type": "application/json",
         },
         body: JSON.stringify(data),
-      })
+      });
 
       if (response.ok) {
-        setOpen(false)
-        form.reset()
-        setAssigneeOpen(false)
-        setDateOpen(false)
-        onTaskCreated?.()
+        setOpen(false);
+        form.reset();
+        setAssigneeOpen(false);
+        setDateOpen(false);
+        onTaskCreated?.();
       } else {
-        const error = await response.json()
-        console.error("Failed to create task:", error)
-        alert(error.message || "Failed to create task")
+        const error = await response.json();
+        console.error("Failed to create task:", error);
+        alert(error.message || "Failed to create task");
       }
     } catch (error) {
-      console.error("Error creating task:", error)
-      alert("An unexpected error occurred")
+      console.error("Error creating task:", error);
+      alert("An unexpected error occurred");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -199,11 +204,9 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Task</DialogTitle>
-          <DialogDescription>
-            Add a new task to your project
-          </DialogDescription>
+          <DialogDescription>Add a new task to your project</DialogDescription>
         </DialogHeader>
-        
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
@@ -241,7 +244,10 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Project</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select project" />
@@ -266,7 +272,10 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Priority</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select priority" />
@@ -367,8 +376,8 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
                         mode="single"
                         selected={field.value}
                         onSelect={(date) => {
-                          field.onChange(date)
-                          setDateOpen(false)
+                          field.onChange(date);
+                          setDateOpen(false);
                         }}
                         disabled={(date) => date < new Date("1900-01-01")}
                         initialFocus
@@ -401,12 +410,16 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
                         {field.value?.length ? (
                           <div className="flex flex-wrap gap-1">
                             {field.value.map((userId) => {
-                              const user = users.find(u => u.id === userId)
+                              const user = users.find((u) => u.id === userId);
                               return user ? (
-                                <Badge key={userId} variant="secondary" className="text-xs">
+                                <Badge
+                                  key={userId}
+                                  variant="secondary"
+                                  className="text-xs"
+                                >
                                   {user.name}
                                 </Badge>
-                              ) : null
+                              ) : null;
                             })}
                           </div>
                         ) : (
@@ -425,17 +438,28 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
                               key={user.id}
                               value={user.id}
                               onSelect={() => {
-                                const currentAssignees = field.value || []
-                                const isSelected = currentAssignees.includes(user.id)
+                                const currentAssignees = field.value || [];
+                                const isSelected = currentAssignees.includes(
+                                  user.id
+                                );
                                 if (isSelected) {
-                                  field.onChange(currentAssignees.filter(id => id !== user.id))
+                                  field.onChange(
+                                    currentAssignees.filter(
+                                      (id) => id !== user.id
+                                    )
+                                  );
                                 } else {
-                                  field.onChange([...currentAssignees, user.id])
+                                  field.onChange([
+                                    ...currentAssignees,
+                                    user.id,
+                                  ]);
                                 }
                               }}
                             >
                               <Checkbox
-                                checked={field.value?.includes(user.id) || false}
+                                checked={
+                                  field.value?.includes(user.id) || false
+                                }
                                 className="mr-2"
                               />
                               {user.name} ({user.email})
@@ -451,7 +475,11 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
             />
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={isLoading}>
@@ -462,5 +490,5 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated }: CreateT
         </Form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
