@@ -737,6 +737,7 @@ export const ComprehensiveTaskDetailModal: React.FC<
                                     <Button
                                       variant="secondary"
                                       size="sm"
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity"
                                       onClick={() => setIsViewingImage(true)}
                                     >
                                       <Eye className="h-4 w-4 mr-1" />
