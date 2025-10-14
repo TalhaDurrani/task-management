@@ -204,7 +204,9 @@ export class TaskService {
           id: attachment.id,
           taskId: attachment.taskId,
           fileName: attachment.fileName,
-          filePath: attachment.filePath,
+          fileData: attachment.fileData as Uint8Array<ArrayBufferLike>,
+          fileType: attachment.fileType,
+          fileExtension: attachment.fileExtension,
           fileSize: attachment.fileSize,
           mimeType: attachment.mimeType,
           uploadedBy: attachment.uploadedBy,
@@ -407,7 +409,9 @@ export class TaskService {
           id: attachment.id,
           taskId: attachment.taskId,
           fileName: attachment.fileName,
-          filePath: attachment.filePath,
+          fileData: attachment.fileData as Uint8Array<ArrayBufferLike>,
+          fileType: attachment.fileType,
+          fileExtension: attachment.fileExtension,
           fileSize: attachment.fileSize,
           mimeType: attachment.mimeType,
           uploadedBy: attachment.uploadedBy,
@@ -457,9 +461,11 @@ export class TaskService {
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
+
           workspaceId: user.workspaceId,
-          }
-      })
+        },
+      });
+
 
       if (!project) {
         throw new Error("Project not found or access denied");
