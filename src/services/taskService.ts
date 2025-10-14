@@ -14,53 +14,55 @@ export class TaskService {
         select: {
           workspaceMemberships: {
             select: {
-              workspaceId: true
-            }
+              workspaceId: true,
+            },
           },
-          workspaceId: true
-        }
-      })
+          workspaceId: true,
+        },
+      });
 
       if (!user) {
-        throw new Error('User not found')
+        throw new Error("User not found");
       }
 
       // Check if user is a member of the requested workspace
-      const workspaceIds = user.workspaceMemberships.map(wm => wm.workspaceId)
+      const workspaceIds = user.workspaceMemberships.map(
+        (wm) => wm.workspaceId
+      );
       if (user.workspaceId && !workspaceIds.includes(user.workspaceId)) {
-        workspaceIds.push(user.workspaceId)
+        workspaceIds.push(user.workspaceId);
       }
 
       if (!workspaceIds.includes(workspaceId)) {
-        throw new Error('Access denied to this workspace')
+        throw new Error("Access denied to this workspace");
       }
 
       // Get all projects in the workspace first
       const projects = await prisma.project.findMany({
         where: { workspaceId: workspaceId },
-        select: { id: true }
-      })
+        select: { id: true },
+      });
 
       if (projects.length === 0) {
-        return []
+        return [];
       }
 
-      const projectIds = projects.map(p => p.id)
+      const projectIds = projects.map((p) => p.id);
 
       // Get all tasks from these projects
       const tasks = await prisma.task.findMany({
         where: {
           projectId: {
-            in: projectIds
-          }
+            in: projectIds,
+          },
         },
         include: {
           creator: {
             select: {
               id: true,
               name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           assignees: {
             include: {
@@ -68,17 +70,17 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
-            }
+                  email: true,
+                },
+              },
+            },
           },
           project: {
             select: {
               id: true,
               title: true,
-              description: true
-            }
+              description: true,
+            },
           },
           comments: {
             include: {
@@ -86,13 +88,13 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
+                  email: true,
+                },
+              },
             },
             orderBy: {
-              createdAt: 'desc'
-            }
+              createdAt: "desc",
+            },
           },
           subTasks: {
             include: {
@@ -100,13 +102,13 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
+                  email: true,
+                },
+              },
             },
             orderBy: {
-              createdAt: 'asc'
-            }
+              createdAt: "asc",
+            },
           },
           timeLogs: {
             include: {
@@ -114,13 +116,13 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
+                  email: true,
+                },
+              },
             },
             orderBy: {
-              logDate: 'desc'
-            }
+              logDate: "desc",
+            },
           },
           attachments: {
             include: {
@@ -128,35 +130,35 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
+                  email: true,
+                },
+              },
             },
             orderBy: {
-              uploadedAt: 'desc'
-            }
+              uploadedAt: "desc",
+            },
           },
           customFields: {
             include: {
-              customField: true
-            }
+              customField: true,
+            },
           },
           tags: {
             include: {
-              tag: true
-            }
-          }
+              tag: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
-        }
-      })
+          createdAt: "desc",
+        },
+      });
 
-      return tasks.map(task => ({
+      return tasks.map((task) => ({
         id: task.id,
         title: task.title,
         description: task.description,
-        type: task.type || 'task',
+        type: task.type || "task",
         customType: task.type,
         projectId: task.projectId,
         createdBy: task.createdBy,
@@ -170,61 +172,64 @@ export class TaskService {
         creator: task.creator,
         assignees: task.assignees.map((ta: any) => ta.user),
         project: task.project,
-        comments: task.comments?.map(comment => ({
-          id: comment.id,
-          taskId: comment.taskId,
-          userId: comment.userId,
-          content: comment.content,
-          createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt,
-          user: comment.user
-        })) || [],
-        subTasks: task.subTasks?.map(subTask => ({
-          id: subTask.id,
-          taskId: subTask.taskId,
-          title: subTask.title,
-          description: subTask.description,
-          userId: subTask.userId,
-          user: subTask.user,
-          completed: subTask.completed,
-          createdAt: subTask.createdAt,
-          updatedAt: subTask.updatedAt
-        })) || [],
-        timeLogs: task.timeLogs?.map(timeLog => ({
-          id: timeLog.id,
-          taskId: timeLog.taskId,
-          userId: timeLog.userId,
-          logDate: timeLog.logDate,
-          hours: timeLog.hoursSpent,
-          description: timeLog.description,
-          createdAt: timeLog.createdAt,
-          user: timeLog.user
-        })) || [],
-        attachments: task.attachments?.map(attachment => ({
-          id: attachment.id,
-          taskId: attachment.taskId,
-          fileName: attachment.fileName,
-          fileData: attachment.fileData as Uint8Array<ArrayBufferLike>,
-          fileType: attachment.fileType,
-          fileExtension: attachment.fileExtension,
-          fileSize: attachment.fileSize,
-          mimeType: attachment.mimeType,
-          uploadedBy: attachment.uploadedBy,
-          uploadedAt: attachment.uploadedAt,
-          user: attachment.user
-        })) || [],
-        customFields: task.customFields?.map(tcf => ({
-          id: tcf.id,
-          taskId: tcf.taskId,
-          customFieldId: tcf.customFieldId,
-          value: tcf.value,
-          customField: tcf.customField
-        })) || [],
-        tags: task.tags?.map(tt => tt.tag) || []
-      }))
+        comments:
+          task.comments?.map((comment) => ({
+            id: comment.id,
+            taskId: comment.taskId,
+            userId: comment.userId,
+            content: comment.content,
+            createdAt: comment.createdAt,
+            updatedAt: comment.updatedAt,
+            user: comment.user,
+          })) || [],
+        subTasks:
+          task.subTasks?.map((subTask) => ({
+            id: subTask.id,
+            taskId: subTask.taskId,
+            title: subTask.title,
+            description: subTask.description,
+            userId: subTask.userId,
+            user: subTask.user,
+            completed: subTask.completed,
+            createdAt: subTask.createdAt,
+            updatedAt: subTask.updatedAt,
+          })) || [],
+        timeLogs:
+          task.timeLogs?.map((timeLog) => ({
+            id: timeLog.id,
+            taskId: timeLog.taskId,
+            userId: timeLog.userId,
+            logDate: timeLog.logDate,
+            hours: timeLog.hoursSpent,
+            description: timeLog.description,
+            createdAt: timeLog.createdAt,
+            user: timeLog.user,
+          })) || [],
+        attachments:
+          task.attachments?.map((attachment) => ({
+            id: attachment.id,
+            taskId: attachment.taskId,
+            fileName: attachment.fileName,
+            filePath: attachment.filePath,
+            fileSize: attachment.fileSize,
+            mimeType: attachment.mimeType,
+            uploadedBy: attachment.uploadedBy,
+            uploadedAt: attachment.uploadedAt,
+            user: attachment.user,
+          })) || [],
+        customFields:
+          task.customFields?.map((tcf) => ({
+            id: tcf.id,
+            taskId: tcf.taskId,
+            customFieldId: tcf.customFieldId,
+            value: tcf.value,
+            customField: tcf.customField,
+          })) || [],
+        tags: task.tags?.map((tt) => tt.tag) || [],
+      }));
     } catch (error) {
-      console.error('Error fetching tasks by workspace:', error)
-      throw new Error('Failed to fetch tasks')
+      console.error("Error fetching tasks by workspace:", error);
+      throw new Error("Failed to fetch tasks");
     }
   }
 
@@ -243,29 +248,29 @@ export class TaskService {
       // Get all projects in user's workspace
       const projects = await prisma.project.findMany({
         where: { workspaceId: user.workspaceId },
-        select: { id: true }
-      })
+        select: { id: true },
+      });
 
       if (projects.length === 0) {
-        return []
+        return [];
       }
 
-      const projectIds = projects.map(p => p.id)
+      const projectIds = projects.map((p) => p.id);
 
       // Get all tasks from these projects
       const tasks = await prisma.task.findMany({
         where: {
           projectId: {
-            in: projectIds
-          }
+            in: projectIds,
+          },
         },
         include: {
           creator: {
             select: {
               id: true,
               name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           assignees: {
             include: {
@@ -273,17 +278,17 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
-            }
+                  email: true,
+                },
+              },
+            },
           },
           project: {
             select: {
               id: true,
               title: true,
-              description: true
-            }
+              description: true,
+            },
           },
           comments: {
             include: {
@@ -291,13 +296,13 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
+                  email: true,
+                },
+              },
             },
             orderBy: {
-              createdAt: 'desc'
-            }
+              createdAt: "desc",
+            },
           },
           subTasks: {
             include: {
@@ -305,13 +310,13 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
+                  email: true,
+                },
+              },
             },
             orderBy: {
-              createdAt: 'asc'
-            }
+              createdAt: "asc",
+            },
           },
           timeLogs: {
             include: {
@@ -319,13 +324,13 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
+                  email: true,
+                },
+              },
             },
             orderBy: {
-              logDate: 'desc'
-            }
+              logDate: "desc",
+            },
           },
           attachments: {
             include: {
@@ -333,35 +338,35 @@ export class TaskService {
                 select: {
                   id: true,
                   name: true,
-                  email: true
-                }
-              }
+                  email: true,
+                },
+              },
             },
             orderBy: {
-              uploadedAt: 'desc'
-            }
+              uploadedAt: "desc",
+            },
           },
           customFields: {
             include: {
-              customField: true
-            }
+              customField: true,
+            },
           },
           tags: {
             include: {
-              tag: true
-            }
-          }
+              tag: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
-        }
-      })
+          createdAt: "desc",
+        },
+      });
 
-      return tasks.map(task => ({
+      return tasks.map((task) => ({
         id: task.id,
         title: task.title,
         description: task.description,
-        type: task.type || 'task',
+        type: task.type || "task",
         customType: task.type,
         projectId: task.projectId,
         createdBy: task.createdBy,
@@ -375,61 +380,64 @@ export class TaskService {
         creator: task.creator,
         assignees: task.assignees.map((ta: any) => ta.user),
         project: task.project,
-        comments: task.comments?.map(comment => ({
-          id: comment.id,
-          taskId: comment.taskId,
-          userId: comment.userId,
-          content: comment.content,
-          createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt,
-          user: comment.user
-        })) || [],
-        subTasks: task.subTasks?.map(subTask => ({
-          id: subTask.id,
-          taskId: subTask.taskId,
-          title: subTask.title,
-          description: subTask.description,
-          userId: subTask.userId,
-          user: subTask.user,
-          completed: subTask.completed,
-          createdAt: subTask.createdAt,
-          updatedAt: subTask.updatedAt
-        })) || [],
-        timeLogs: task.timeLogs?.map(timeLog => ({
-          id: timeLog.id,
-          taskId: timeLog.taskId,
-          userId: timeLog.userId,
-          logDate: timeLog.logDate,
-          hours: timeLog.hoursSpent,
-          description: timeLog.description,
-          createdAt: timeLog.createdAt,
-          user: timeLog.user
-        })) || [],
-        attachments: task.attachments?.map(attachment => ({
-          id: attachment.id,
-          taskId: attachment.taskId,
-          fileName: attachment.fileName,
-          fileData: attachment.fileData as Uint8Array<ArrayBufferLike>,
-          fileType: attachment.fileType,
-          fileExtension: attachment.fileExtension,
-          fileSize: attachment.fileSize,
-          mimeType: attachment.mimeType,
-          uploadedBy: attachment.uploadedBy,
-          uploadedAt: attachment.uploadedAt,
-          user: attachment.user
-        })) || [],
-        customFields: task.customFields?.map(tcf => ({
-          id: tcf.id,
-          taskId: tcf.taskId,
-          customFieldId: tcf.customFieldId,
-          value: tcf.value,
-          customField: tcf.customField
-        })) || [],
-        tags: task.tags?.map(tt => tt.tag) || []
-      }))
+        comments:
+          task.comments?.map((comment) => ({
+            id: comment.id,
+            taskId: comment.taskId,
+            userId: comment.userId,
+            content: comment.content,
+            createdAt: comment.createdAt,
+            updatedAt: comment.updatedAt,
+            user: comment.user,
+          })) || [],
+        subTasks:
+          task.subTasks?.map((subTask) => ({
+            id: subTask.id,
+            taskId: subTask.taskId,
+            title: subTask.title,
+            description: subTask.description,
+            userId: subTask.userId,
+            user: subTask.user,
+            completed: subTask.completed,
+            createdAt: subTask.createdAt,
+            updatedAt: subTask.updatedAt,
+          })) || [],
+        timeLogs:
+          task.timeLogs?.map((timeLog) => ({
+            id: timeLog.id,
+            taskId: timeLog.taskId,
+            userId: timeLog.userId,
+            logDate: timeLog.logDate,
+            hours: timeLog.hoursSpent,
+            description: timeLog.description,
+            createdAt: timeLog.createdAt,
+            user: timeLog.user,
+          })) || [],
+        attachments:
+          task.attachments?.map((attachment) => ({
+            id: attachment.id,
+            taskId: attachment.taskId,
+            fileName: attachment.fileName,
+            filePath: attachment.filePath,
+            fileSize: attachment.fileSize,
+            mimeType: attachment.mimeType,
+            uploadedBy: attachment.uploadedBy,
+            uploadedAt: attachment.uploadedAt,
+            user: attachment.user,
+          })) || [],
+        customFields:
+          task.customFields?.map((tcf) => ({
+            id: tcf.id,
+            taskId: tcf.taskId,
+            customFieldId: tcf.customFieldId,
+            value: tcf.value,
+            customField: tcf.customField,
+          })) || [],
+        tags: task.tags?.map((tt) => tt.tag) || [],
+      }));
     } catch (error) {
-      console.error('Error fetching all user tasks:', error)
-      throw new Error('Failed to fetch tasks')
+      console.error("Error fetching all user tasks:", error);
+      throw new Error("Failed to fetch tasks");
     }
   }
 
@@ -438,23 +446,25 @@ export class TaskService {
       // Get the user's workspace memberships
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        include: { 
+        include: {
           workspaceMemberships: {
             select: {
-              workspaceId: true
-            }
-          }
-        }
-      })
+              workspaceId: true,
+            },
+          },
+        },
+      });
 
       if (!user) {
-        throw new Error('User not found')
+        throw new Error("User not found");
       }
 
       // Build list of all workspace IDs the user has access to
-      const workspaceIds = user.workspaceMemberships.map(wm => wm.workspaceId)
+      const workspaceIds = user.workspaceMemberships.map(
+        (wm) => wm.workspaceId
+      );
       if (user.workspaceId && !workspaceIds.includes(user.workspaceId)) {
-        workspaceIds.push(user.workspaceId)
+        workspaceIds.push(user.workspaceId);
       }
 
       // Check if user has access to the project (any workspace they're a member of)
@@ -465,7 +475,6 @@ export class TaskService {
           workspaceId: user.workspaceId,
         },
       });
-
 
       if (!project) {
         throw new Error("Project not found or access denied");
@@ -629,9 +638,7 @@ export class TaskService {
             id: attachment.id,
             taskId: attachment.taskId,
             fileName: attachment.fileName,
-            fileData: attachment.fileData,
-            fileType: attachment.fileType,
-            fileExtension: attachment.fileExtension,
+            filePath: attachment.filePath,
             fileSize: attachment.fileSize,
             mimeType: attachment.mimeType,
             uploadedBy: attachment.uploadedBy,
@@ -825,9 +832,7 @@ export class TaskService {
           id: attachment.id,
           taskId: attachment.taskId,
           fileName: attachment.fileName,
-          fileData: attachment.fileData as Uint8Array<ArrayBufferLike>,
-          fileType: attachment.fileType,
-          fileExtension: attachment.fileExtension,
+          filePath: attachment.filePath,
           fileSize: attachment.fileSize,
           mimeType: attachment.mimeType,
           uploadedBy: attachment.uploadedBy,
@@ -1049,9 +1054,7 @@ export class TaskService {
           data: data.attachments.map((att) => ({
             taskId: task.id,
             fileName: att.fileName,
-            fileData: Buffer.from(att.fileData, "base64"),
-            fileType: att.fileType,
-            fileExtension: att.fileExtension,
+            filePath: att.filePath,
             fileSize: att.fileSize,
             mimeType: att.mimeType,
             uploadedBy: userId,

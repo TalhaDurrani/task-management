@@ -113,9 +113,7 @@ interface Comment {
 interface Attachment {
   id: string;
   fileName: string;
-  fileData: Record<string, number>;
-  fileType: string;
-  fileExtension: string;
+  filePath: string;
   fileSize: number;
   mimeType: string;
   uploadedAt: Date;
@@ -701,14 +699,7 @@ export const ComprehensiveTaskDetailModal: React.FC<
                         {attachments.map((attachment) => {
                           const isImage =
                             attachment.mimeType.startsWith("image/");
-                          const imageUrl =
-                            isImage && attachment.fileData
-                              ? `data:${
-                                  attachment.mimeType
-                                };base64,${Buffer.from(
-                                  Object.values(attachment.fileData)
-                                ).toString("base64")}`
-                              : "";
+                          const imageUrl = attachment.filePath;
                           return (
                             <div
                               key={attachment.id}
@@ -733,7 +724,7 @@ export const ComprehensiveTaskDetailModal: React.FC<
                                       `;
                                     }}
                                   />
-                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2">
                                     <Button
                                       variant="secondary"
                                       size="sm"
@@ -757,7 +748,8 @@ export const ComprehensiveTaskDetailModal: React.FC<
                                   </div>
                                   <Button variant="outline" size="sm" asChild>
                                     <a
-                                      href={imageUrl}
+                                      href={`/api/tasks/${taskId}/attachments/${attachment.id}/download`}
+                                      target="_blank"
                                       download={attachment.fileName}
                                     >
                                       <Download className="h-3 w-3 mr-1" />
@@ -896,7 +888,7 @@ export const ComprehensiveTaskDetailModal: React.FC<
                                       </div>
                                     ) : (
                                       <div className="aspect-video flex items-center justify-center bg-muted rounded">
-                                        <Paperclip className="h-8 w-8 text-muted-foreground" />
+                                        {getFileIcon(file.type)}
                                       </div>
                                     )}
                                     <p

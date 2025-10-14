@@ -214,10 +214,8 @@ model Attachment {
   id         String   @id @default(uuid()) @db.Uuid
   taskId     String   @db.Uuid
   fileName   String
-  fileData   Bytes
+  filePath   String  
   fileSize   Int
-  fileType   String
-  fileExtension String
   mimeType   String
   uploadedBy String   @db.Uuid
   uploadedAt DateTime @default(now())

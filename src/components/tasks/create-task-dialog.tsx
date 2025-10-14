@@ -152,6 +152,14 @@ export function CreateTaskDialog({
   const [statuses, setStatuses] = useState<TaskStatus[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<
+    Array<{
+      fileName: string;
+      fileSize: number;
+      mimeType: string;
+      file: File;
+    }>
+  >([]);
   const [tagOpen, setTagOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
 
@@ -371,37 +379,21 @@ export function CreateTaskDialog({
   };
 
   const handleFileUpload = async (files: FileList) => {
-    const fileArray = await Promise.all(
-      Array.from(files).map(async (file) => {
-        const base64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
+    const fileArray = Array.from(files).map((file) => ({
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type,
+      file: file, // Store the actual File object for upload
+    }));
 
-        return {
-          fileName: file.name,
-          fileData: base64.split(",")[1], // Remove data:type;base64, prefix
-          fileType: file.type,
-          fileExtension: file.name.split(".").pop() || "",
-          fileSize: file.size,
-          mimeType: file.type,
-        };
-      })
-    );
-
-    const currentAttachments = form.getValues("attachments") || [];
-    form.setValue("attachments", [...currentAttachments, ...fileArray]);
+    setUploadedFiles((prev) => [...prev, ...fileArray]);
   };
 
   const removeAttachment = (index: number) => {
-    const currentAttachments = form.getValues("attachments") || [];
-    const newAttachments = currentAttachments.filter((_, i) => i !== index);
-    form.setValue("attachments", newAttachments);
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const onSubmit = async (data: FormData) => {
-   
     setIsLoading(true);
     try {
       // Handle custom type creation if needed
@@ -477,19 +469,58 @@ export function CreateTaskDialog({
         }
       }
 
-      console.log("Final task data being sent:", data);
+      // Remove file objects from data before sending JSON
+      const taskData = {
+        ...data,
+        attachments: [], // Will be handled separately after task creation
+      };
+
+      console.log("Final task data being sent:", taskData);
 
       const response = await fetch("/api/tasks", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(taskData),
       });
 
       if (response.ok) {
+        const taskResult = await response.json();
+        const taskId = taskResult.id;
+
+        // Upload files if there are any files
+        if (uploadedFiles && uploadedFiles.length > 0) {
+          for (const fileData of uploadedFiles) {
+            if (fileData.file) {
+              try {
+                const formData = new FormData();
+                formData.append("file", fileData.file);
+
+                const uploadResponse = await fetch(
+                  `/api/tasks/${taskId}/attachments`,
+                  {
+                    method: "POST",
+                    body: formData,
+                  }
+                );
+
+                if (!uploadResponse.ok) {
+                  console.error(
+                    "Failed to upload attachment:",
+                    fileData.fileName
+                  );
+                }
+              } catch (error) {
+                console.error("Error uploading attachment:", error);
+              }
+            }
+          }
+        }
+
         setOpen(false);
         form.reset();
+        setUploadedFiles([]); // Clear uploaded files
         onTaskCreated?.();
       } else {
         const error = await response.json();
@@ -1125,35 +1156,34 @@ export function CreateTaskDialog({
               </div>
 
               {/* Uploaded Files List */}
-              {form.watch("attachments") &&
-                form.watch("attachments")!.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Uploaded Files:</p>
-                    {form.watch("attachments")!.map((attachment, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-2 bg-gray-50 rounded"
-                      >
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">
-                            {attachment.fileName}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {(attachment.fileSize / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeAttachment(index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+              {uploadedFiles && uploadedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Uploaded Files:</p>
+                  {uploadedFiles.map((fileData, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-2 bg-gray-50 rounded-lg dark:bg-input/30"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          {fileData.fileName}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {(fileData.fileSize / 1024 / 1024).toFixed(2)} MB
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeAttachment(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <DialogFooter>
