@@ -22,6 +22,9 @@ import {
   Eye,
   Star,
   RefreshCw,
+  Tag,
+  UserPlus,
+  X,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
@@ -47,6 +50,7 @@ import {
 import { CreateTaskDialog } from "./create-task-dialog";
 import { ComprehensiveTaskDetailModal } from "./comprehensive-task-detail-modal";
 import { getStatusColor, getStatusLabel, normalizeStatusForAPI, normalizeStatusFromAPI, getNumericStatus } from "@/lib/status-utils";
+import { useWorkspace } from "@/components/providers/workspace-provider"
 
 interface Task {
   id: string;
@@ -73,6 +77,11 @@ interface Task {
     id: string;
     name: string;
     avatar?: string;
+  }>;
+  tags?: Array<{
+    id: string;
+    name: string;
+    color?: string;
   }>;
   commentsCount?: number;
   attachmentsCount?: number;
@@ -163,6 +172,22 @@ export function TasksListView({
     { name: "IN_PROGRESS", color: "#BLUE", category: "IN_PROGRESS" },
     { name: "DONE", color: "#GREEN", category: "COMPLETED" },
   ]);
+
+  // State for workspace users and tags
+  const [workspaceUsers, setWorkspaceUsers] = useState<Array<{
+    id: string;
+    name: string;
+    email: string;
+    avatar?: string;
+  }>>([]);
+
+  const [workspaceTags, setWorkspaceTags] = useState<Array<{
+    id: string;
+    name: string;
+    color?: string;
+  }>>([]);
+
+  const { selectedWorkspace } = useWorkspace()
 
   // Helper functions for styling with dynamic support
 
@@ -291,29 +316,18 @@ export function TasksListView({
 
   // Add function to force refresh from server
   const handleRefresh = useCallback(async () => {
-    if (projectId) {
-      setIsRefreshing(true);
-      try {
-        const response = await fetch(`/api/tasks?projectId=${projectId}`);
-        if (response.ok) {
-          const updatedTasks = await response.json();
-          setTasks(updatedTasks);
-        }
-      } catch (error) {
-        console.error("Error refreshing tasks:", error);
-      } finally {
-        setIsRefreshing(false);
-      }
-    }
-  }, [projectId]);
-
-  // Real-time data refresh function
-  const refreshTasks = useCallback(async () => {
-    if (!projectId || !enableRealTimeUpdates) return;
-
     setIsRefreshing(true);
     try {
-      const response = await fetch(`/api/tasks?projectId=${projectId}`);
+      // If workspace is selected, fetch tasks from that workspace
+      // Otherwise, fetch tasks from current project or all user tasks
+      let url = '/api/tasks?'
+      if (selectedWorkspace) {
+        url += `workspaceId=${selectedWorkspace.id}`
+      } else if (projectId) {
+        url += `projectId=${projectId}`
+      }
+
+      const response = await fetch(url);
       if (response.ok) {
         const updatedTasks = await response.json();
         setTasks(updatedTasks);
@@ -323,20 +337,79 @@ export function TasksListView({
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectId, enableRealTimeUpdates]);
+  }, [projectId, selectedWorkspace?.id]);
+
+  // Real-time data refresh function
+  const refreshTasks = useCallback(async () => {
+    if (!enableRealTimeUpdates) return;
+
+    setIsRefreshing(true);
+    try {
+      // If workspace is selected, fetch tasks from that workspace
+      // Otherwise, fetch tasks from current project or all user tasks
+      let url = '/api/tasks?'
+      if (selectedWorkspace) {
+        url += `workspaceId=${selectedWorkspace.id}`
+      } else if (projectId) {
+        url += `projectId=${projectId}`
+      }
+
+      const response = await fetch(url);
+      if (response.ok) {
+        const updatedTasks = await response.json();
+        setTasks(updatedTasks);
+      }
+    } catch (error) {
+      console.error("Error refreshing tasks:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [projectId, enableRealTimeUpdates, selectedWorkspace?.id]);
 
   // Set up real-time polling
   useEffect(() => {
-    if (!projectId || !enableRealTimeUpdates) return;
+    if (!enableRealTimeUpdates) return;
 
     const interval = setInterval(refreshTasks, refreshInterval || 15000); // Default to 15 seconds
     return () => clearInterval(interval);
-  }, [refreshTasks, refreshInterval, projectId, enableRealTimeUpdates]);
+  }, [refreshTasks, refreshInterval, enableRealTimeUpdates]);
 
   // Load types and statuses on component mount and when workflowStatuses change
   useEffect(() => {
     loadTypesAndStatuses();
   }, [workflowStatuses]);
+
+  // Load workspace users and tags
+  useEffect(() => {
+    const loadWorkspaceData = async () => {
+      if (!selectedWorkspace) return;
+
+      try {
+        // Fetch workspace users
+        const usersResponse = await fetch(`/api/users?workspaceId=${selectedWorkspace.id}`);
+        if (usersResponse.ok) {
+          const usersData = await usersResponse.json();
+          setWorkspaceUsers(usersData.map((user: any) => ({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar
+          })));
+        }
+
+        // Fetch workspace tags
+        const tagsResponse = await fetch(`/api/tags?workspaceId=${selectedWorkspace.id}`);
+        if (tagsResponse.ok) {
+          const tagsData = await tagsResponse.json();
+          setWorkspaceTags(tagsData);
+        }
+      } catch (error) {
+        console.error('Error loading workspace data:', error);
+      }
+    };
+
+    loadWorkspaceData();
+  }, [selectedWorkspace]);
 
   const handleSelectTask = (taskId: string, checked: boolean) => {
     if (checked) {
@@ -695,6 +768,98 @@ export function TasksListView({
     }
   };
 
+  const handleAssignUser = async (taskId: string, userId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/assign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (response.ok) {
+        const updatedTask = await response.json();
+        
+        // Update local state
+        setTasks((prevTasks) =>
+          prevTasks.map((task) =>
+            task.id === taskId ? { ...task, assignees: updatedTask.assignees } : task
+          )
+        );
+
+        // Call callback if provided
+        onTaskAssign?.(taskId, userId);
+
+        // Trigger parent refresh
+        if (onTaskEdit) {
+          onTaskEdit(updatedTask);
+        }
+      }
+    } catch (error) {
+      console.error("Error assigning user to task:", error);
+    }
+  };
+
+  const handleAddTag = async (taskId: string, tagId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/tags`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ tagId }),
+      });
+
+      if (response.ok) {
+        const updatedTask = await response.json();
+        
+        // Update local state
+        setTasks((prevTasks) =>
+          prevTasks.map((task) =>
+            task.id === taskId ? { ...task, tags: updatedTask.tags } : task
+          )
+        );
+
+        // Trigger parent refresh
+        if (onTaskEdit) {
+          onTaskEdit(updatedTask);
+        }
+      }
+    } catch (error) {
+      console.error("Error adding tag to task:", error);
+    }
+  };
+
+  const handleRemoveTag = async (taskId: string, tagId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/tags/${tagId}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        // Update local state
+        setTasks((prevTasks) =>
+          prevTasks.map((task) =>
+            task.id === taskId 
+              ? { ...task, tags: task.tags?.filter(t => t.id !== tagId) } 
+              : task
+          )
+        );
+
+        // Trigger parent refresh
+        if (onTaskEdit) {
+          const task = tasks.find(t => t.id === taskId);
+          if (task) {
+            onTaskEdit(task);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error removing tag from task:", error);
+    }
+  };
+
   const handleTaskClick = (task: Task) => {
     setSelectedTask(task);
     setIsTaskDetailOpen(true);
@@ -963,6 +1128,9 @@ export function TasksListView({
                 <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Assigned To
                 </th>
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                  Tags
+                </th>
                 <th className="w-12 px-4 py-4 text-left"></th>
               </tr>
             </thead>
@@ -1149,47 +1317,196 @@ export function TasksListView({
 
                   {/* Assigned To */}
                   <td className="px-4 py-5">
-                    {task.assignees && task.assignees.length > 0 ? (
-                      <div className="flex items-center gap-3">
-                        {task.assignees.slice(0, 2).map((assignee, index) => (
-                          <div
-                            key={assignee.id}
-                            className="flex items-center gap-2"
+                    <Popover 
+                      open={openPopovers[`assignee-${task.id}`] || false}
+                      onOpenChange={(open) => handlePopoverOpen(`assignee-${task.id}`, open)}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          {task.assignees && task.assignees.length > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex -space-x-2">
+                                {task.assignees.slice(0, 2).map((assignee) => (
+                                  <Avatar key={assignee.id} className="h-6 w-6 border-2 border-white dark:border-gray-900">
+                                    <AvatarImage src={assignee.avatar} />
+                                    <AvatarFallback className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                      {assignee.name.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ))}
+                              </div>
+                              <span className="text-sm text-gray-900 dark:text-gray-100">
+                                {task.assignees.length > 2 ? `+${task.assignees.length - 2}` : ''}
+                              </span>
+                            </div>
+                          ) : task.assignee ? (
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={task.assignee.avatar} />
+                                <AvatarFallback className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                  {task.assignee.name.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            </div>
+                          ) : (
+                            <>
+                              <UserPlus className="h-4 w-4 text-gray-400" />
+                              <span className="text-sm text-gray-400 dark:text-gray-500">
+                                Assign
+                              </span>
+                            </>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 p-0 shadow-lg" align="start">
+                        <Command className="rounded-lg border-0">
+                          <CommandInput 
+                            placeholder="Search users..." 
+                            className="h-11 border-b"
+                          />
+                          <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
+                            No users found.
+                          </CommandEmpty>
+                          <CommandGroup className="max-h-72 overflow-auto p-2">
+                            {workspaceUsers.map((user) => {
+                              const isAssigned = task.assignees?.some(a => a.id === user.id) || task.assignee?.id === user.id;
+                              return (
+                                <CommandItem
+                                  key={user.id}
+                                  onSelect={() => {
+                                    handleAssignUser(task.id, user.id);
+                                    handlePopoverOpen(`assignee-${task.id}`, false);
+                                  }}
+                                  className="flex items-center justify-between gap-3 px-3 py-3 rounded-md cursor-pointer hover:bg-accent aria-selected:bg-accent"
+                                >
+                                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <Avatar className="h-8 w-8 flex-shrink-0">
+                                      <AvatarImage src={user.avatar} />
+                                      <AvatarFallback className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 font-semibold">
+                                        {user.name.charAt(0).toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex flex-col min-w-0 flex-1">
+                                      <p className="text-sm font-medium text-foreground truncate">
+                                        {user.name}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {user.email}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {isAssigned && (
+                                    <Badge variant="secondary" className="text-xs flex-shrink-0">
+                                      ✓ Assigned
+                                    </Badge>
+                                  )}
+                                </CommandItem>
+                              );
+                            })}
+                          </CommandGroup>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </td>
+
+                  {/* Tags */}
+                  <td className="px-4 py-5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {task.tags && task.tags.length > 0 && (
+                        <>
+                          {task.tags.slice(0, 2).map((tag) => (
+                            <Badge
+                              key={tag.id}
+                              variant="outline"
+                              className="text-xs gap-1"
+                              style={{ 
+                                borderColor: tag.color || '#6B7280',
+                                color: tag.color || '#6B7280'
+                              }}
+                            >
+                              <Tag className="h-3 w-3" />
+                              {tag.name}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveTag(task.id, tag.id);
+                                }}
+                                className="ml-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full p-0.5"
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </Badge>
+                          ))}
+                          {task.tags.length > 2 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{task.tags.length - 2}
+                            </Badge>
+                          )}
+                        </>
+                      )}
+                      <Popover 
+                        open={openPopovers[`tags-${task.id}`] || false}
+                        onOpenChange={(open) => handlePopoverOpen(`tags-${task.id}`, open)}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
                           >
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage src={assignee.avatar} />
-                              <AvatarFallback className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                                {assignee.name.charAt(0).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm text-gray-900 dark:text-gray-100">
-                              {assignee.name}
-                              {index === 0 &&
-                              task.assignees &&
-                              task.assignees.length > 2
-                                ? ` +${task.assignees.length - 2}`
-                                : ""}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : task.assignee ? (
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={task.assignee.avatar} />
-                          <AvatarFallback className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                            {task.assignee.name.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm text-gray-900 dark:text-gray-100">
-                          {task.assignee.name}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-400 dark:text-gray-500">
-                        Unassigned
-                      </span>
-                    )}
+                            <Plus className="h-3 w-3 text-gray-400" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 p-0 shadow-lg" align="start">
+                          <Command className="rounded-lg border-0">
+                            <CommandInput 
+                              placeholder="Search tags..." 
+                              className="h-11 border-b"
+                            />
+                            <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
+                              No tags found.
+                            </CommandEmpty>
+                            <CommandGroup className="max-h-72 overflow-auto p-2">
+                              {workspaceTags.map((tag) => {
+                                const isAdded = task.tags?.some(t => t.id === tag.id);
+                                return (
+                                  <CommandItem
+                                    key={tag.id}
+                                    onSelect={() => {
+                                      if (!isAdded) {
+                                        handleAddTag(task.id, tag.id);
+                                      }
+                                      handlePopoverOpen(`tags-${task.id}`, false);
+                                    }}
+                                    className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md cursor-pointer hover:bg-accent aria-selected:bg-accent"
+                                    disabled={isAdded}
+                                  >
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <div 
+                                        className="h-3 w-3 rounded-full flex-shrink-0"
+                                        style={{ backgroundColor: tag.color || '#6B7280' }}
+                                      />
+                                      <span className="text-sm font-medium text-foreground">
+                                        {tag.name}
+                                      </span>
+                                    </div>
+                                    {isAdded && (
+                                      <Badge variant="secondary" className="text-xs flex-shrink-0">
+                                        ✓ Added
+                                      </Badge>
+                                    )}
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </td>
 
                   {/* Actions */}

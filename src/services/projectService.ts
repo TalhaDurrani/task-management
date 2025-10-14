@@ -98,23 +98,128 @@ export class ProjectService {
     }
   }
 
-  static async getProject(id: string, userId: string) {
+  static async getProjectsByWorkspace(userId: string, workspaceId: string) {
     try {
-      // First get the user's workspace
+      // First verify user has access to this workspace
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { workspaceId: true, }
+        select: {
+          workspaceMemberships: {
+            select: {
+              workspaceId: true
+            }
+          },
+          workspaceId: true
+        }
       })
 
-      if (!user || !user.workspaceId ) {
-        throw new Error('User not assigned to workspace')
+      if (!user) {
+        throw new Error('User not found')
+      }
+
+      // Check if user is a member of the requested workspace
+      const workspaceIds = user.workspaceMemberships.map(wm => wm.workspaceId)
+      if (user.workspaceId && !workspaceIds.includes(user.workspaceId)) {
+        workspaceIds.push(user.workspaceId)
+      }
+
+      if (!workspaceIds.includes(workspaceId)) {
+        throw new Error('Access denied to this workspace')
+      }
+
+      const projects = await prisma.project.findMany({
+        where: {
+          workspaceId: workspaceId
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          },
+          tasks: {
+            include: {
+              creator: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      })
+
+      return projects.map(project => ({
+        id: project.id,
+        title: project.title,
+        description: project.description,
+        projectName: project.projectName,
+        projectDocument: project.projectDocument,
+        ownerId: project.userId,
+        createdBy: project.createdBy,
+        createdAt: project.createdAt,
+        completedAt: project.completedAt,
+        noOfAssignedUsers: project.noOfAssignedUsers,
+        owner: project.user,
+        tasks: project.tasks.map(task => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          projectId: task.projectId,
+          createdBy: task.createdBy,
+          completedAt: task.completedAt,
+          status: task.status,
+          priority: task.priority,
+          dueDate: task.dueDate,
+          createdAt: task.createdAt,
+          creator: task.creator
+        }))
+      }))
+    } catch (error) {
+      console.error('Error fetching projects by workspace:', error)
+      throw new Error('Failed to fetch projects')
+    }
+  }
+
+  static async getProject(id: string, userId: string) {
+    try {
+      // Get user with all workspace memberships
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          workspaceId: true,
+          workspaceMemberships: {
+            select: {
+              workspaceId: true
+            }
+          }
+        }
+      })
+
+      if (!user) {
+        throw new Error('User not found')
+      }
+
+      // Build list of all workspaces user has access to
+      const workspaceIds = user.workspaceMemberships.map(wm => wm.workspaceId)
+      if (user.workspaceId && !workspaceIds.includes(user.workspaceId)) {
+        workspaceIds.push(user.workspaceId)
       }
 
       const project = await prisma.project.findFirst({
         where: {
           id: id,
-          workspaceId: user.workspaceId,
-          // Users should be able to access any project in their workspace
+          workspaceId: {
+            in: workspaceIds
+          }
         },
         include: {
           user: {
@@ -177,6 +282,7 @@ export class ProjectService {
         description: project.description,
         projectName: project.projectName,
         projectDocument: project.projectDocument,
+        workspaceId: project.workspaceId,
         ownerId: project.userId,
         createdBy: project.createdBy,
         createdAt: project.createdAt,
@@ -293,6 +399,7 @@ export class ProjectService {
         description: project.description,
         projectName: project.projectName,
         projectDocument: project.projectDocument,
+        workspaceId: project.workspaceId,
         ownerId: project.userId,
         createdBy: project.createdBy,
         createdAt: project.createdAt,
@@ -373,6 +480,7 @@ export class ProjectService {
         description: project.description,
         projectName: project.projectName,
         projectDocument: project.projectDocument,
+        workspaceId: project.workspaceId,
         ownerId: project.userId,
         createdBy: project.createdBy,
         createdAt: project.createdAt,

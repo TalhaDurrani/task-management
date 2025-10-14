@@ -10,7 +10,67 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Only admins can view users
+    const { searchParams } = new URL(request.url)
+    const workspaceId = searchParams.get("workspaceId")
+
+    // If workspaceId is provided, fetch users from that workspace (for task assignment, etc.)
+    if (workspaceId) {
+      // Verify user has access to this workspace
+      const hasAccess = await prisma.workspaceMember.findFirst({
+        where: {
+          workspaceId: workspaceId,
+          userId: user.id
+        }
+      })
+
+      if (!hasAccess && user.workspaceId !== workspaceId) {
+        return NextResponse.json({ error: "Access denied to this workspace" }, { status: 403 })
+      }
+
+      // Fetch all users who are members of this workspace
+      const workspaceMembers = await prisma.workspaceMember.findMany({
+        where: {
+          workspaceId: workspaceId
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            }
+          }
+        }
+      })
+
+      // Also include users whose primary workspace is this one
+      const primaryWorkspaceUsers = await prisma.user.findMany({
+        where: {
+          workspaceId: workspaceId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        }
+      })
+
+      // Combine and deduplicate users
+      const allUsers = [
+        ...workspaceMembers.map(wm => wm.user),
+        ...primaryWorkspaceUsers
+      ]
+
+      const uniqueUsers = Array.from(
+        new Map(allUsers.map(u => [u.id, u])).values()
+      )
+
+      return NextResponse.json(uniqueUsers)
+    }
+
+    // Original admin-only behavior for listing all workspace users
     if (user.role !== 'ADMIN') {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }

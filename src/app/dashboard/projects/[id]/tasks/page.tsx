@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useWorkspace } from "@/components/providers/workspace-provider"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { CreateTaskDialog } from "@/components/tasks/create-task-dialog"
 import { TasksListView } from "@/components/tasks/tasks-list-view"
@@ -28,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Plus, ArrowLeft, Clock, List, Table, Circle, AlertCircle, CheckCircle2, Star, Zap, Target, Flag, Columns, X } from "lucide-react"
 import Link from "next/link"
+import { toast } from "sonner"
 
 export const dynamic = 'force-dynamic'
 interface TasksPageProps {
@@ -82,6 +84,7 @@ const getIconName = (iconComponent: any) => {
 }
 
 export default function TasksPage({ params }: TasksPageProps) {
+  const { selectedWorkspace } = useWorkspace()
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [project, setProject] = useState<any>(null)
   const [tasks, setTasks] = useState<any[]>([])
@@ -137,6 +140,12 @@ export default function TasksPage({ params }: TasksPageProps) {
 
   useEffect(() => {
     const loadData = async () => {
+      // Guard: Don't load if no workspace is selected
+      if (!selectedWorkspace) {
+        setIsLoading(false)
+        return
+      }
+
       try {
         // Get current user from the new auth system
         const response = await fetch('/api/auth/login', {
@@ -152,7 +161,19 @@ export default function TasksPage({ params }: TasksPageProps) {
           const projectResponse = await fetch(`/api/projects/${params.id}`)
           if (projectResponse.ok) {
             const projectData = await projectResponse.json()
+            
+            // Workspace validation: Ensure project belongs to selected workspace
+            if (projectData.workspaceId !== selectedWorkspace.id) {
+              toast.error('This project does not belong to the selected workspace')
+              router.push('/dashboard/projects')
+              return
+            }
+            
             setProject(projectData)
+          } else {
+            toast.error('Failed to load project')
+            router.push('/dashboard/projects')
+            return
           }
           
           // Load tasks data from API
@@ -180,9 +201,9 @@ export default function TasksPage({ params }: TasksPageProps) {
             }
           }
 
-          // Load custom statuses for the workspace
-          if (result.user.workspaceId) {
-            const statusesResponse = await fetch(`/api/custom-statuses?workspaceId=${result.user.workspaceId}`)
+          // Load custom statuses for the SELECTED workspace (not primary workspace)
+          if (selectedWorkspace.id) {
+            const statusesResponse = await fetch(`/api/custom-statuses?workspaceId=${selectedWorkspace.id}`)
             if (statusesResponse.ok) {
               const statusesData = await statusesResponse.json()
               setCustomStatuses(statusesData)
@@ -194,15 +215,17 @@ export default function TasksPage({ params }: TasksPageProps) {
         }
       } catch (error) {
         console.error('Error loading tasks data:', error)
-        // Redirect to sign-in on error
-        window.location.href = "/auth/signin"
+        // Only redirect on authentication errors, not general errors
+        if (error instanceof Error && error.message.includes('auth')) {
+          window.location.href = "/auth/signin"
+        }
       } finally {
         setIsLoading(false)
       }
     }
 
     loadData()
-  }, [params.id])
+  }, [params.id, selectedWorkspace?.id, router])
 
   const handleTaskCreated = async () => {
     // Reload tasks data
@@ -640,6 +663,21 @@ export default function TasksPage({ params }: TasksPageProps) {
     }
   }
 
+  // Guard: Show message if no workspace is selected
+  if (!selectedWorkspace) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">No Workspace Selected</h1>
+          <p className="text-muted-foreground mb-4">Please select a workspace from the sidebar to view project tasks.</p>
+          <Button onClick={() => router.push('/dashboard/projects')}>
+            Back to Projects
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -685,10 +723,10 @@ export default function TasksPage({ params }: TasksPageProps) {
             <Plus className="mr-2 h-4 w-4" />
             Create Work Flow
           </Button>
-          <Button variant="outline" onClick={() => setWorkflowManagerOpen(true)}>
+          {/* <Button variant="outline" onClick={() => setWorkflowManagerOpen(true)}>
             <List className="mr-2 h-4 w-4" />
             Manage Workflows
-          </Button>
+          </Button> */}
         </div>
       </div>
 
@@ -710,7 +748,7 @@ export default function TasksPage({ params }: TasksPageProps) {
         <TabsContent value="kanban">
           <div className="space-y-4">
             {/* Workflow Selector */}
-            <div className="flex items-center justify-between">
+            {/* <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Columns className="h-4 w-4" />
                 <span className="text-sm font-medium">Workflow:</span>
@@ -732,7 +770,7 @@ export default function TasksPage({ params }: TasksPageProps) {
               <Button variant="outline" size="sm" onClick={() => setWorkflowManagerOpen(true)}>
                 Manage Workflows
               </Button>
-            </div>
+            </div> */}
 
             <KanbanBoard
               tasks={tasks}

@@ -12,7 +12,15 @@ export class WorkspaceService {
   static async getWorkspaces(userId: string) {
     try {
       const user = await prisma.user.findUnique({
-        where: { id: userId }
+        where: { id: userId },
+        include: {
+          workspaceMemberships: {
+            select: {
+              workspaceId: true,
+              role: true
+            }
+          }
+        }
       })
 
       if (!user) {
@@ -43,13 +51,33 @@ export class WorkspaceService {
         }
       })
 
-      return workspaces.map(workspace => ({
-        ...workspace,
-        _count: {
-          ...workspace._count,
-          users: workspace._count.members
+      // Map workspaces with user's role in each workspace
+      return workspaces.map(workspace => {
+        // Determine user's role in this workspace
+        let userRole: 'ADMIN' | 'MEMBER' = 'MEMBER'
+        
+        // Owner has ADMIN role
+        if (workspace.ownerId === userId) {
+          userRole = 'ADMIN'
+        } else {
+          // Check workspace membership for role
+          const membership = user.workspaceMemberships.find(
+            wm => wm.workspaceId === workspace.id
+          )
+          if (membership) {
+            userRole = membership.role
+          }
         }
-      }))
+
+        return {
+          ...workspace,
+          _count: {
+            ...workspace._count,
+            users: workspace._count.members
+          },
+          userRole
+        }
+      })
     } catch (error) {
       console.error('Error fetching workspaces:', error)
       throw new Error('Failed to fetch workspaces')

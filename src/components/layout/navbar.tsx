@@ -17,17 +17,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { NotificationDropdown } from "@/components/notifications/notification-dropdown"
 import { SearchDialog } from "@/components/search/search-dialog"
-import { 
-  Settings, 
-  LogOut, 
-  Search, 
+import {
+  Settings,
+  LogOut,
+  Search,
   Command,
   HelpCircle,
   Zap,
   Menu,
-  X
+  X,
 } from "lucide-react"
-// Remove old hardcoded auth import
 
 export function Navbar() {
   const { user: currentUser, isLoading } = useAuth()
@@ -97,9 +96,9 @@ export function Navbar() {
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
       <div className="flex h-14 items-center px-4 lg:px-6">
         {/* Mobile menu button */}
-        <Button 
-          variant="ghost" 
-          size="sm" 
+        <Button
+          variant="ghost"
+          size="sm"
           className="lg:hidden mr-2"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         >
@@ -107,16 +106,19 @@ export function Navbar() {
         </Button>
 
         <div className="flex flex-1 items-center justify-between">
-          {/* Left side - Logo and Search */}
+          {/* Left side - Logo */}
           <div className="flex items-center space-x-4">
-            {/* Logo - Hidden on mobile */}
-            <div className="hidden md:flex items-center space-x-2">
+            {/* Logo */}
+            <div className="flex items-center space-x-2">
               <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
                 <Zap className="h-3 w-3 text-primary-foreground" />
               </div>
               <span className="font-semibold text-sm">Sigma Flow</span>
             </div>
+          </div>
 
+          {/* Right side - Actions and User Menu */}
+          <div className="flex items-center space-x-1">
             {/* Search - Desktop */}
             <div className="relative hidden lg:block">
               <Button
@@ -133,10 +135,7 @@ export function Navbar() {
                 </div>
               </Button>
             </div>
-          </div>
 
-          {/* Right side - Actions and User Menu */}
-          <div className="flex items-center space-x-1">
             {/* Search - Mobile */}
             <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setIsSearchOpen(true)}>
               <Search className="h-4 w-4" />
@@ -169,7 +168,6 @@ export function Navbar() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={currentUser?.image || ""} alt={currentUser?.name || ""} />
                       <AvatarFallback>{currentUser?.name?.[0] || "U"}</AvatarFallback>
                     </Avatar>
                     <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-background rounded-full"></div>
@@ -221,7 +219,7 @@ export function Navbar() {
                 className="w-full pl-10 pr-4 py-2 text-sm bg-muted border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
               />
             </form>
-            
+
             <div className="flex items-center justify-between pt-2">
               <Button variant="ghost" size="sm" onClick={handleCommandPalette}>
                 <Command className="mr-2 h-4 w-4" />

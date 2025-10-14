@@ -5,6 +5,7 @@ import { GeistMono } from "geist/font/mono"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { ReactQueryProvider } from "@/components/providers/react-query-provider"
+import { WorkspaceProvider } from "@/components/providers/workspace-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { Suspense } from "react"
 import "./globals.css"
@@ -26,8 +27,10 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <ReactQueryProvider>
             <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-              {children}
-              <Toaster />
+              <WorkspaceProvider>
+                {children}
+                <Toaster />
+              </WorkspaceProvider>
             </ThemeProvider>
           </ReactQueryProvider>
           <Analytics />

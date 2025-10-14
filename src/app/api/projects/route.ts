@@ -9,7 +9,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const projects = await ProjectService.getProjects(user.id)
+    // Get workspaceId from query params (optional)
+    const { searchParams } = new URL(request.url)
+    const workspaceId = searchParams.get('workspaceId')
+
+    // If workspaceId is provided, filter projects by that workspace
+    // Otherwise, return projects from all workspaces user has access to
+    let projects
+    if (workspaceId) {
+      projects = await ProjectService.getProjectsByWorkspace(user.id, workspaceId)
+    } else {
+      projects = await ProjectService.getProjects(user.id)
+    }
+
     return NextResponse.json(projects)
   } catch (error) {
     console.error("Error fetching projects:", error)
@@ -26,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const project = await ProjectService.createProject(body, user.id)
-    
+
     return NextResponse.json(project, { status: 201 })
   } catch (error) {
     console.error("Error creating project:", error)

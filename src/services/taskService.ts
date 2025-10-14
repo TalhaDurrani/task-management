@@ -6,9 +6,229 @@ import { StatusCategory } from '@prisma/client'
 import { getNumericStatus } from '@/lib/status-utils'
 
 export class TaskService {
-  static async getTasks(projectId: string, userId: string) {
+  static async getTasksByWorkspace(userId: string, workspaceId: string) {
     try {
-      // Get the user's workspace
+      // First verify user has access to this workspace
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          workspaceMemberships: {
+            select: {
+              workspaceId: true
+            }
+          },
+          workspaceId: true
+        }
+      })
+
+      if (!user) {
+        throw new Error('User not found')
+      }
+
+      // Check if user is a member of the requested workspace
+      const workspaceIds = user.workspaceMemberships.map(wm => wm.workspaceId)
+      if (user.workspaceId && !workspaceIds.includes(user.workspaceId)) {
+        workspaceIds.push(user.workspaceId)
+      }
+
+      if (!workspaceIds.includes(workspaceId)) {
+        throw new Error('Access denied to this workspace')
+      }
+
+      // Get all projects in the workspace first
+      const projects = await prisma.project.findMany({
+        where: { workspaceId: workspaceId },
+        select: { id: true }
+      })
+
+      if (projects.length === 0) {
+        return []
+      }
+
+      const projectIds = projects.map(p => p.id)
+
+      // Get all tasks from these projects
+      const tasks = await prisma.task.findMany({
+        where: {
+          projectId: {
+            in: projectIds
+          }
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          assignees: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            }
+          },
+          project: {
+            select: {
+              id: true,
+              title: true,
+              description: true
+            }
+          },
+          comments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              createdAt: 'desc'
+            }
+          },
+          subTasks: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              createdAt: 'asc'
+            }
+          },
+          timeLogs: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              logDate: 'desc'
+            }
+          },
+          attachments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              uploadedAt: 'desc'
+            }
+          },
+          customFields: {
+            include: {
+              customField: true
+            }
+          },
+          tags: {
+            include: {
+              tag: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      })
+
+      return tasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        type: task.type || 'task',
+        customType: task.type,
+        projectId: task.projectId,
+        createdBy: task.createdBy,
+        completedAt: task.completedAt,
+        priority: task.priority.toLowerCase(),
+        status: task.status,
+        customStatus: task.customStatus,
+        statusCategory: task.statusCategory,
+        dueDate: task.dueDate,
+        createdAt: task.createdAt,
+        creator: task.creator,
+        assignees: task.assignees.map((ta: any) => ta.user),
+        project: task.project,
+        comments: task.comments?.map(comment => ({
+          id: comment.id,
+          taskId: comment.taskId,
+          userId: comment.userId,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+          user: comment.user
+        })) || [],
+        subTasks: task.subTasks?.map(subTask => ({
+          id: subTask.id,
+          taskId: subTask.taskId,
+          title: subTask.title,
+          description: subTask.description,
+          userId: subTask.userId,
+          user: subTask.user,
+          completed: subTask.completed,
+          createdAt: subTask.createdAt,
+          updatedAt: subTask.updatedAt
+        })) || [],
+        timeLogs: task.timeLogs?.map(timeLog => ({
+          id: timeLog.id,
+          taskId: timeLog.taskId,
+          userId: timeLog.userId,
+          logDate: timeLog.logDate,
+          hours: timeLog.hoursSpent,
+          description: timeLog.description,
+          createdAt: timeLog.createdAt,
+          user: timeLog.user
+        })) || [],
+        attachments: task.attachments?.map(attachment => ({
+          id: attachment.id,
+          taskId: attachment.taskId,
+          fileName: attachment.fileName,
+          filePath: attachment.filePath,
+          fileSize: attachment.fileSize,
+          mimeType: attachment.mimeType,
+          uploadedBy: attachment.uploadedBy,
+          uploadedAt: attachment.uploadedAt,
+          user: attachment.user
+        })) || [],
+        customFields: task.customFields?.map(tcf => ({
+          id: tcf.id,
+          taskId: tcf.taskId,
+          customFieldId: tcf.customFieldId,
+          value: tcf.value,
+          customField: tcf.customField
+        })) || [],
+        tags: task.tags?.map(tt => tt.tag) || []
+      }))
+    } catch (error) {
+      console.error('Error fetching tasks by workspace:', error)
+      throw new Error('Failed to fetch tasks')
+    }
+  }
+
+  static async getAllUserTasks(userId: string) {
+    try {
+      // Get user's workspace for proper isolation
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { workspaceId: true, }
@@ -18,12 +238,227 @@ export class TaskService {
         throw new Error('User not assigned to workspace')
       }
 
-      // Check if user has access to the project (same workspace)
+      // Get all projects in user's workspace
+      const projects = await prisma.project.findMany({
+        where: { workspaceId: user.workspaceId },
+        select: { id: true }
+      })
+
+      if (projects.length === 0) {
+        return []
+      }
+
+      const projectIds = projects.map(p => p.id)
+
+      // Get all tasks from these projects
+      const tasks = await prisma.task.findMany({
+        where: {
+          projectId: {
+            in: projectIds
+          }
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          assignees: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            }
+          },
+          project: {
+            select: {
+              id: true,
+              title: true,
+              description: true
+            }
+          },
+          comments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              createdAt: 'desc'
+            }
+          },
+          subTasks: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              createdAt: 'asc'
+            }
+          },
+          timeLogs: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              logDate: 'desc'
+            }
+          },
+          attachments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            },
+            orderBy: {
+              uploadedAt: 'desc'
+            }
+          },
+          customFields: {
+            include: {
+              customField: true
+            }
+          },
+          tags: {
+            include: {
+              tag: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      })
+
+      return tasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        type: task.type || 'task',
+        customType: task.type,
+        projectId: task.projectId,
+        createdBy: task.createdBy,
+        completedAt: task.completedAt,
+        priority: task.priority.toLowerCase(),
+        status: task.status,
+        customStatus: task.customStatus,
+        statusCategory: task.statusCategory,
+        dueDate: task.dueDate,
+        createdAt: task.createdAt,
+        creator: task.creator,
+        assignees: task.assignees.map((ta: any) => ta.user),
+        project: task.project,
+        comments: task.comments?.map(comment => ({
+          id: comment.id,
+          taskId: comment.taskId,
+          userId: comment.userId,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+          user: comment.user
+        })) || [],
+        subTasks: task.subTasks?.map(subTask => ({
+          id: subTask.id,
+          taskId: subTask.taskId,
+          title: subTask.title,
+          description: subTask.description,
+          userId: subTask.userId,
+          user: subTask.user,
+          completed: subTask.completed,
+          createdAt: subTask.createdAt,
+          updatedAt: subTask.updatedAt
+        })) || [],
+        timeLogs: task.timeLogs?.map(timeLog => ({
+          id: timeLog.id,
+          taskId: timeLog.taskId,
+          userId: timeLog.userId,
+          logDate: timeLog.logDate,
+          hours: timeLog.hoursSpent,
+          description: timeLog.description,
+          createdAt: timeLog.createdAt,
+          user: timeLog.user
+        })) || [],
+        attachments: task.attachments?.map(attachment => ({
+          id: attachment.id,
+          taskId: attachment.taskId,
+          fileName: attachment.fileName,
+          filePath: attachment.filePath,
+          fileSize: attachment.fileSize,
+          mimeType: attachment.mimeType,
+          uploadedBy: attachment.uploadedBy,
+          uploadedAt: attachment.uploadedAt,
+          user: attachment.user
+        })) || [],
+        customFields: task.customFields?.map(tcf => ({
+          id: tcf.id,
+          taskId: tcf.taskId,
+          customFieldId: tcf.customFieldId,
+          value: tcf.value,
+          customField: tcf.customField
+        })) || [],
+        tags: task.tags?.map(tt => tt.tag) || []
+      }))
+    } catch (error) {
+      console.error('Error fetching all user tasks:', error)
+      throw new Error('Failed to fetch tasks')
+    }
+  }
+
+  static async getTasks(projectId: string, userId: string) {
+    try {
+      // Get the user's workspace memberships
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { 
+          workspaceMemberships: {
+            select: {
+              workspaceId: true
+            }
+          }
+        }
+      })
+
+      if (!user) {
+        throw new Error('User not found')
+      }
+
+      // Build list of all workspace IDs the user has access to
+      const workspaceIds = user.workspaceMemberships.map(wm => wm.workspaceId)
+      if (user.workspaceId && !workspaceIds.includes(user.workspaceId)) {
+        workspaceIds.push(user.workspaceId)
+      }
+
+      // Check if user has access to the project (any workspace they're a member of)
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          workspaceId: user.workspaceId,
-          }
+          workspaceId: { in: workspaceIds }
+        }
       })
 
       if (!project) {

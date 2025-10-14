@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
+import { useWorkspace } from "@/components/providers/workspace-provider"
 // Removed ProjectService import - using API calls instead
 import { ProjectsTable } from "@/components/projects/projects-table"
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
@@ -13,14 +14,16 @@ import { Plus } from "lucide-react"
 
 export default function ProjectsPage() {
   const { user: currentUser, isLoading } = useAuth()
+  const { selectedWorkspace, isLoading: workspaceLoading } = useWorkspace()
   const [projects, setProjects] = useState([])
   const router = useRouter()
 
   useEffect(() => {
     const loadProjects = async () => {
-      if (currentUser) {
+      if (currentUser && selectedWorkspace) {
         try {
-          const projectsResponse = await fetch('/api/projects')
+          // Load projects from the selected workspace
+          const projectsResponse = await fetch(`/api/projects?workspaceId=${selectedWorkspace.id}`)
           if (projectsResponse.ok) {
             const projectsData = await projectsResponse.json()
             setProjects(projectsData)
@@ -31,10 +34,12 @@ export default function ProjectsPage() {
       }
     }
 
-    loadProjects()
-  }, [currentUser])
+    if (!isLoading && !workspaceLoading && selectedWorkspace) {
+      loadProjects()
+    }
+  }, [currentUser?.id, selectedWorkspace?.id, isLoading, workspaceLoading])
 
-  if (isLoading) {
+  if (isLoading || workspaceLoading) {
     return <LoadingProjects />
   }
 
@@ -49,12 +54,25 @@ export default function ProjectsPage() {
     )
   }
 
+  if (!selectedWorkspace) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <h3 className="text-lg font-semibold mb-2">No Workspace Selected</h3>
+          <p className="text-muted-foreground">Please select a workspace to view projects.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
-          <p className="text-muted-foreground">Manage your projects and collaborate with your team</p>
+          <p className="text-muted-foreground">
+            Manage your projects in {selectedWorkspace.name} workspace
+          </p>
         </div>
         <CreateProjectDialog>
           <Button>

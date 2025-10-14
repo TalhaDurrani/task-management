@@ -273,7 +273,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
 </Card>
 
       {/* Workflow Management */}
-      <WorkflowManager projectId={project.id} />
+      {/* <WorkflowManager projectId={project.id} /> */}
     </div>
   )
 }
