@@ -1,17 +1,24 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useForm, useFieldArray } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { format } from "date-fns"
-import { CalendarIcon, Plus, X, Upload, User, Tag as TagIcon } from "lucide-react"
+import { useState, useEffect } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { format } from "date-fns";
+import {
+  CalendarIcon,
+  Plus,
+  X,
+  Upload,
+  User,
+  Tag as TagIcon,
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Calendar } from "@/components/ui/calendar"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -28,29 +35,29 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form"
+} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"
+} from "@/components/ui/popover";
 import {
   Command,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
-} from "@/components/ui/command"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 // Form schema with all required features
 const formSchema = z.object({
@@ -65,77 +72,88 @@ const formSchema = z.object({
   dueDate: z.date().optional(),
   assignees: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
-  subTasks: z.array(
-    z.object({
-      title: z.string().min(1, "Subtask title is required"),
-      description: z.string().optional(),
-      userId: z.string().optional(),
-      completed: z.boolean().optional(),
-    })
-  ).optional(),
-  attachments: z.array(
-    z.object({
-      name: z.string(),
-      url: z.string(),
-      type: z.string(),
-      size: z.number(),
-    })
-  ).optional(),
-})
+  subTasks: z
+    .array(
+      z.object({
+        title: z.string().min(1, "Subtask title is required"),
+        description: z.string().optional(),
+        userId: z.string().optional(),
+        completed: z.boolean().optional(),
+      })
+    )
+    .optional(),
+  attachments: z
+    .array(
+      z.object({
+        fileName: z.string(),
+        fileData: z.string(),
+        fileType: z.string(),
+        fileExtension: z.string(),
+        fileSize: z.number(),
+        mimeType: z.string(),
+      })
+    )
+    .optional(),
+});
 
-type FormData = z.infer<typeof formSchema>
+type FormData = z.infer<typeof formSchema>;
 
 interface Project {
-  id: string
-  title: string
+  id: string;
+  title: string;
 }
 
 interface User {
-  id: string
-  name: string
-  email: string
+  id: string;
+  name: string;
+  email: string;
 }
 
 interface TaskType {
-  name: string
-  color?: string
+  name: string;
+  color?: string;
 }
 
 interface TaskStatus {
-  name: string
-  color?: string
-  category?: string
+  name: string;
+  color?: string;
+  category?: string;
 }
 
 interface Tag {
-  id: string
-  name: string
-  color?: string | null
+  id: string;
+  name: string;
+  color?: string | null;
 }
 
 interface CreateTaskDialogProps {
-  children?: React.ReactNode
-  projectId?: string
-  onTaskCreated?: () => void
+  children?: React.ReactNode;
+  projectId?: string;
+  onTaskCreated?: () => void;
   workflowStatuses?: Array<{
-    id: string
-    title: string
-    color: string
-    icon: any
-  }>
+    id: string;
+    title: string;
+    color: string;
+    icon: any;
+  }>;
 }
 
-export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowStatuses }: CreateTaskDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [types, setTypes] = useState<TaskType[]>([])
-  const [statuses, setStatuses] = useState<TaskStatus[]>([])
-  const [tags, setTags] = useState<Tag[]>([])
-  const [assigneeOpen, setAssigneeOpen] = useState(false)
-  const [tagOpen, setTagOpen] = useState(false)
-  const [dateOpen, setDateOpen] = useState(false)
+export function CreateTaskDialog({
+  children,
+  projectId,
+  onTaskCreated,
+  workflowStatuses,
+}: CreateTaskDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [types, setTypes] = useState<TaskType[]>([]);
+  const [statuses, setStatuses] = useState<TaskStatus[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -152,115 +170,126 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
       subTasks: [],
       attachments: [],
     },
-  })
+  });
 
-  const { fields: subTaskFields, append: appendSubTask, remove: removeSubTask } = useFieldArray({
+  const {
+    fields: subTaskFields,
+    append: appendSubTask,
+    remove: removeSubTask,
+  } = useFieldArray({
     control: form.control,
-    name: "subTasks"
-  })
+    name: "subTasks",
+  });
 
   // Load all data when dialog opens
   useEffect(() => {
     if (open) {
-      loadProjects()
-      loadUsers()
-      loadTypesAndStatuses()
-      loadTags()
+      loadProjects();
+      loadUsers();
+      loadTypesAndStatuses();
+      loadTags();
     }
-  }, [open])
+  }, [open]);
 
   useEffect(() => {
     if (projectId) {
-      form.setValue("projectId", projectId)
+      form.setValue("projectId", projectId);
     }
-  }, [projectId, form])
+  }, [projectId, form]);
 
   const loadProjects = async () => {
     try {
-      const response = await fetch("/api/projects")
+      const response = await fetch("/api/projects");
       if (response.ok) {
-        const data = await response.json()
-        setProjects(Array.isArray(data) ? data : (data.projects || []))
+        const data = await response.json();
+        setProjects(Array.isArray(data) ? data : data.projects || []);
       }
     } catch (error) {
-      console.error("Failed to load projects:", error)
+      console.error("Failed to load projects:", error);
     }
-  }
+  };
 
   const loadUsers = async () => {
     try {
-      const response = await fetch("/api/users/assignable")
+      const response = await fetch("/api/users/assignable");
       if (response.ok) {
-        const data = await response.json()
-        setUsers(Array.isArray(data) ? data : (data.users || []))
+        const data = await response.json();
+        setUsers(Array.isArray(data) ? data : data.users || []);
       }
     } catch (error) {
-      console.error("Failed to load users:", error)
+      console.error("Failed to load users:", error);
     }
-  }
+  };
 
   const loadTypesAndStatuses = async () => {
     try {
       // Get current user to fetch workspace
-      const userResponse = await fetch("/api/auth/me")
-      let workspaceId = null
+      const userResponse = await fetch("/api/auth/me");
+      let workspaceId = null;
       if (userResponse.ok) {
-        const userData = await userResponse.json()
-        workspaceId = userData.workspaceId
+        const userData = await userResponse.json();
+        workspaceId = userData.workspaceId;
       }
 
       // Load types
-      const typesUrl = workspaceId ? `/api/tasks/type?workspaceId=${workspaceId}` : "/api/tasks/type"
-      const typesResponse = await fetch(typesUrl)
+      const typesUrl = workspaceId
+        ? `/api/tasks/type?workspaceId=${workspaceId}`
+        : "/api/tasks/type";
+      const typesResponse = await fetch(typesUrl);
       if (typesResponse.ok) {
-        const typesData = await typesResponse.json()
-        const allTypes = [...(typesData.default || []), ...(typesData.custom || [])]
-        setTypes(allTypes)
+        const typesData = await typesResponse.json();
+        const allTypes = [
+          ...(typesData.default || []),
+          ...(typesData.custom || []),
+        ];
+        setTypes(allTypes);
       }
 
       // Use workflow statuses if provided, otherwise load from API
       if (workflowStatuses && workflowStatuses.length > 0) {
         // Convert workflow columns to status format
-        const workflowStatusOptions = workflowStatuses.map(col => ({
+        const workflowStatusOptions = workflowStatuses.map((col) => ({
           name: col.title,
-          color: col.color
-        }))
-        setStatuses(workflowStatusOptions)
+          color: col.color,
+        }));
+        setStatuses(workflowStatusOptions);
       } else {
         // Load statuses from API
-        const statusesUrl = workspaceId ? `/api/tasks/status?workspaceId=${workspaceId}` : "/api/tasks/status"
-        const statusesResponse = await fetch(statusesUrl)
+        const statusesUrl = workspaceId
+          ? `/api/tasks/status?workspaceId=${workspaceId}`
+          : "/api/tasks/status";
+        const statusesResponse = await fetch(statusesUrl);
         if (statusesResponse.ok) {
-          const statusesData = await statusesResponse.json()
-          setStatuses(statusesData)
+          const statusesData = await statusesResponse.json();
+          setStatuses(statusesData);
         }
       }
     } catch (error) {
-      console.error("Failed to load types and statuses:", error)
+      console.error("Failed to load types and statuses:", error);
     }
-  }
+  };
 
   const loadTags = async () => {
     try {
       // Get current user to fetch workspace
-      const userResponse = await fetch("/api/auth/me")
-      let workspaceId = null
+      const userResponse = await fetch("/api/auth/me");
+      let workspaceId = null;
       if (userResponse.ok) {
-        const userData = await userResponse.json()
-        workspaceId = userData.workspaceId
+        const userData = await userResponse.json();
+        workspaceId = userData.workspaceId;
       }
 
       if (workspaceId) {
-        const response = await fetch(`/api/tags?workspaceId=${workspaceId}`)
+        const response = await fetch(`/api/tags?workspaceId=${workspaceId}`);
         if (response.ok) {
-          const data = await response.json()
-          setTags(Array.isArray(data) ? data : [])
+          const data = await response.json();
+          setTags(Array.isArray(data) ? data : []);
         }
       }
     } catch (error) {
-      console.error("Failed to load tags:", error)
+      console.error("Failed to load tags:", error);
     }
-  }
+  };
 
   const createCustomType = async (typeName: string) => {
     try {
@@ -269,155 +298,186 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name: typeName })
-      })
+        body: JSON.stringify({ name: typeName }),
+      });
 
       if (response.ok) {
-        const newType = await response.json()
-        setTypes(prev => [...prev, newType])
-        form.setValue('type', newType.name)
-        
+        const newType = await response.json();
+        setTypes((prev) => [...prev, newType]);
+        form.setValue("type", newType.name);
+
         // Notify parent component that custom fields were updated
         if (window.dispatchEvent) {
-          window.dispatchEvent(new CustomEvent('customFieldsUpdated', { 
-            detail: { type: 'type', action: 'create', data: newType } 
-          }))
+          window.dispatchEvent(
+            new CustomEvent("customFieldsUpdated", {
+              detail: { type: "type", action: "create", data: newType },
+            })
+          );
         }
-        
-        return true
+
+        return true;
       }
     } catch (error) {
-      console.error("Failed to create custom type:", error)
+      console.error("Failed to create custom type:", error);
     }
-    return false
-  }
+    return false;
+  };
 
-  const createCustomStatus = async (statusName: string, category: string = 'BACKLOG') => {
+  const createCustomStatus = async (
+    statusName: string,
+    category: string = "BACKLOG"
+  ) => {
     try {
       const response = await fetch("/api/tasks/status", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           name: statusName,
-          category: category
-        })
-      })
+          category: category,
+        }),
+      });
 
       if (response.ok) {
-        const newStatus = await response.json()
-        console.log("Created custom status:", newStatus)
-        console.log("Current statuses before update:", statuses)
-        
-        setStatuses(prev => {
-          const updated = [...prev, newStatus]
-          console.log("Updated statuses array:", updated)
-          return updated
-        })
-        
-        form.setValue('status', newStatus.name)
-        console.log("Set form value to:", newStatus.name)
-        
+        const newStatus = await response.json();
+        console.log("Created custom status:", newStatus);
+        console.log("Current statuses before update:", statuses);
+
+        setStatuses((prev) => {
+          const updated = [...prev, newStatus];
+          console.log("Updated statuses array:", updated);
+          return updated;
+        });
+
+        form.setValue("status", newStatus.name);
+        console.log("Set form value to:", newStatus.name);
+
         // Notify parent component that custom fields were updated
         if (window.dispatchEvent) {
-          window.dispatchEvent(new CustomEvent('customFieldsUpdated', { 
-            detail: { type: 'status', action: 'create', data: newStatus } 
-          }))
+          window.dispatchEvent(
+            new CustomEvent("customFieldsUpdated", {
+              detail: { type: "status", action: "create", data: newStatus },
+            })
+          );
         }
-        
-        return true
+
+        return true;
       }
     } catch (error) {
-      console.error("Failed to create custom status:", error)
+      console.error("Failed to create custom status:", error);
     }
-    return false
-  }
+    return false;
+  };
 
-  const handleFileUpload = (files: FileList) => {
-    const fileArray = Array.from(files).map(file => ({
-      fileName: file.name,
-      filePath: URL.createObjectURL(file),
-      fileSize: file.size,
-      mimeType: file.type,
-    }))
-    
-    const currentAttachments = form.getValues("attachments") || []
-    form.setValue("attachments", [...currentAttachments, ...fileArray])
-  }
+  const handleFileUpload = async (files: FileList) => {
+    const fileArray = await Promise.all(
+      Array.from(files).map(async (file) => {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+
+        return {
+          fileName: file.name,
+          fileData: base64.split(",")[1], // Remove data:type;base64, prefix
+          fileType: file.type,
+          fileExtension: file.name.split(".").pop() || "",
+          fileSize: file.size,
+          mimeType: file.type,
+        };
+      })
+    );
+
+    const currentAttachments = form.getValues("attachments") || [];
+    form.setValue("attachments", [...currentAttachments, ...fileArray]);
+  };
 
   const removeAttachment = (index: number) => {
-    const currentAttachments = form.getValues("attachments") || []
-    const newAttachments = currentAttachments.filter((_, i) => i !== index)
-    form.setValue("attachments", newAttachments)
-  }
+    const currentAttachments = form.getValues("attachments") || [];
+    const newAttachments = currentAttachments.filter((_, i) => i !== index);
+    form.setValue("attachments", newAttachments);
+  };
 
   const onSubmit = async (data: FormData) => {
-    setIsLoading(true)
+   
+    setIsLoading(true);
     try {
       // Handle custom type creation if needed
-      if (data.type === 'CUSTOM' && data.customType) {
-        const created = await createCustomType(data.customType)
+      if (data.type === "CUSTOM" && data.customType) {
+        const created = await createCustomType(data.customType);
         if (!created) {
-          alert('Failed to create custom type')
-          setIsLoading(false)
-          return
+          alert("Failed to create custom type");
+          setIsLoading(false);
+          return;
         }
-        data.type = data.customType
+        data.type = data.customType;
       }
 
       // Handle custom status creation if needed
-      if (data.status === 'CUSTOM' && data.customStatus) {
-        const created = await createCustomStatus(data.customStatus)
+      if (data.status === "CUSTOM" && data.customStatus) {
+        const created = await createCustomStatus(data.customStatus);
         if (!created) {
-          alert('Failed to create custom status')
-          setIsLoading(false)
-          return
+          alert("Failed to create custom status");
+          setIsLoading(false);
+          return;
         }
         // For custom status, set numeric status and customStatus
-        data.status = 1 // Default to Todo for new custom statuses
+        data.status = "1"; // Default to Todo for new custom statuses
         // data.customStatus is already set to the custom status name
       } else {
         // Handle status conversion for numeric system
         // If workflow statuses are provided, convert selected status to numeric value
         if (workflowStatuses && workflowStatuses.length > 0) {
           // Find the selected workflow status and convert to numeric
-          const selectedWorkflowStatus = workflowStatuses.find(ws => ws.title === data.status)
+          const selectedWorkflowStatus = workflowStatuses.find(
+            (ws) => ws.title === data.status
+          );
           if (selectedWorkflowStatus) {
             // Convert workflow status title to numeric value
-            if (selectedWorkflowStatus.title === 'Todo' || selectedWorkflowStatus.title.toLowerCase().includes('todo')) {
-              data.status = 1
-            } else if (selectedWorkflowStatus.title === 'In Progress' || selectedWorkflowStatus.title.toLowerCase().includes('progress')) {
-              data.status = 2
-            } else if (selectedWorkflowStatus.title === 'Done' || selectedWorkflowStatus.title.toLowerCase().includes('done')) {
-              data.status = 3
+            if (
+              selectedWorkflowStatus.title === "Todo" ||
+              selectedWorkflowStatus.title.toLowerCase().includes("todo")
+            ) {
+              data.status = "1";
+            } else if (
+              selectedWorkflowStatus.title === "In Progress" ||
+              selectedWorkflowStatus.title.toLowerCase().includes("progress")
+            ) {
+              data.status = "2";
+            } else if (
+              selectedWorkflowStatus.title === "Done" ||
+              selectedWorkflowStatus.title.toLowerCase().includes("done")
+            ) {
+              data.status = "3";
             } else {
-              data.status = 1 // Default to Todo
+              data.status = "1"; // Default to Todo
             }
-            data.customStatus = selectedWorkflowStatus.title
+            data.customStatus = selectedWorkflowStatus.title;
           }
         } else {
           // Handle default status conversion for backward compatibility
-          const selectedStatus = statuses.find(s => s.name === data.status)
+          const selectedStatus = statuses.find((s) => s.name === data.status);
           if (selectedStatus) {
             // Convert status name to numeric value
-            if (selectedStatus.name === 'Todo') {
-              data.status = 1
-            } else if (selectedStatus.name === 'In Progress') {
-              data.status = 2
-            } else if (selectedStatus.name === 'Done') {
-              data.status = 3
+            if (selectedStatus.name === "Todo") {
+              data.status = "1";
+            } else if (selectedStatus.name === "In Progress") {
+              data.status = "2";
+            } else if (selectedStatus.name === "Done") {
+              data.status = "3";
             } else {
-              data.status = 1 // Default to Todo
+              data.status = "1"; // Default to Todo
             }
           } else {
             // Default fallback
-            data.status = 1
+            data.status = "1";
           }
         }
       }
 
-      console.log('Final task data being sent:', data)
+      console.log("Final task data being sent:", data);
 
       const response = await fetch("/api/tasks", {
         method: "POST",
@@ -425,24 +485,24 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
           "Content-Type": "application/json",
         },
         body: JSON.stringify(data),
-      })
+      });
 
       if (response.ok) {
-        setOpen(false)
-        form.reset()
-        onTaskCreated?.()
+        setOpen(false);
+        form.reset();
+        onTaskCreated?.();
       } else {
-        const error = await response.json()
-        console.error("Failed to create task:", error)
-        alert(error.message || "Failed to create task")
+        const error = await response.json();
+        console.error("Failed to create task:", error);
+        alert(error.message || "Failed to create task");
       }
     } catch (error) {
-      console.error("Error creating task:", error)
-      alert("An unexpected error occurred")
+      console.error("Error creating task:", error);
+      alert("An unexpected error occurred");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -458,10 +518,11 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
         <DialogHeader>
           <DialogTitle>Create Task</DialogTitle>
           <DialogDescription>
-            Add a new task to your project with custom types, statuses, subtasks, and attachments.
+            Add a new task to your project with custom types, statuses,
+            subtasks, and attachments.
           </DialogDescription>
         </DialogHeader>
-        
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             {/* Basic Information */}
@@ -503,7 +564,10 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Project</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select project" />
@@ -528,7 +592,10 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Priority</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select priority" />
@@ -556,13 +623,13 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                   <FormItem>
                     <FormLabel>Task Type</FormLabel>
                     <div className="space-y-2">
-                      <Select 
+                      <Select
                         onValueChange={(value) => {
-                          field.onChange(value)
-                          if (value !== 'CUSTOM') {
-                            form.setValue('customType', undefined)
+                          field.onChange(value);
+                          if (value !== "CUSTOM") {
+                            form.setValue("customType", undefined);
                           }
-                        }} 
+                        }}
                         value={field.value}
                       >
                         <FormControl>
@@ -584,8 +651,8 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                           </SelectItem>
                         </SelectContent>
                       </Select>
-                      
-                      {field.value === 'CUSTOM' && (
+
+                      {field.value === "CUSTOM" && (
                         <div className="space-y-2">
                           <FormField
                             control={form.control}
@@ -593,8 +660,8 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                             render={({ field: customTypeField }) => (
                               <FormItem>
                                 <FormControl>
-                                  <Input 
-                                    placeholder="Enter custom type name" 
+                                  <Input
+                                    placeholder="Enter custom type name"
                                     {...customTypeField}
                                   />
                                 </FormControl>
@@ -607,11 +674,14 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                             size="sm"
                             variant="outline"
                             onClick={async () => {
-                              const customTypeName = form.getValues('customType')
+                              const customTypeName =
+                                form.getValues("customType");
                               if (customTypeName && customTypeName.trim()) {
-                                const success = await createCustomType(customTypeName.trim())
+                                const success = await createCustomType(
+                                  customTypeName.trim()
+                                );
                                 if (success) {
-                                  form.setValue('customType', '')
+                                  form.setValue("customType", "");
                                 }
                               }
                             }}
@@ -633,14 +703,14 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                   <FormItem>
                     <FormLabel>Status</FormLabel>
                     <div className="space-y-2">
-                      <Select 
+                      <Select
                         key={`status-select-${statuses.length}`}
                         onValueChange={(value) => {
-                          field.onChange(value)
-                          if (value !== 'CUSTOM') {
-                            form.setValue('customStatus', undefined)
+                          field.onChange(value);
+                          if (value !== "CUSTOM") {
+                            form.setValue("customStatus", undefined);
                           }
-                        }} 
+                        }}
                         value={field.value}
                       >
                         <FormControl>
@@ -652,9 +722,11 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                           {statuses.map((status) => (
                             <SelectItem key={status.name} value={status.name}>
                               <div className="flex items-center space-x-2">
-                                <div 
-                                  className="w-3 h-3 rounded-full" 
-                                  style={{ backgroundColor: status.color || '#gray' }}
+                                <div
+                                  className="w-3 h-3 rounded-full"
+                                  style={{
+                                    backgroundColor: status.color || "#gray",
+                                  }}
                                 ></div>
                                 <span>{status.name}</span>
                               </div>
@@ -668,8 +740,8 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                           </SelectItem>
                         </SelectContent>
                       </Select>
-                      
-                      {field.value === 'CUSTOM' && (
+
+                      {field.value === "CUSTOM" && (
                         <div className="space-y-2">
                           <FormField
                             control={form.control}
@@ -677,8 +749,8 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                             render={({ field: customStatusField }) => (
                               <FormItem>
                                 <FormControl>
-                                  <Input 
-                                    placeholder="Enter custom status name" 
+                                  <Input
+                                    placeholder="Enter custom status name"
                                     {...customStatusField}
                                   />
                                 </FormControl>
@@ -691,11 +763,14 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                             size="sm"
                             variant="outline"
                             onClick={async () => {
-                              const customStatusName = form.getValues('customStatus')
+                              const customStatusName =
+                                form.getValues("customStatus");
                               if (customStatusName && customStatusName.trim()) {
-                                const success = await createCustomStatus(customStatusName.trim())
+                                const success = await createCustomStatus(
+                                  customStatusName.trim()
+                                );
                                 if (success) {
-                                  form.setValue('customStatus', '')
+                                  form.setValue("customStatus", "");
                                 }
                               }
                             }}
@@ -742,8 +817,8 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                         mode="single"
                         selected={field.value}
                         onSelect={(date) => {
-                          field.onChange(date)
-                          setDateOpen(false)
+                          field.onChange(date);
+                          setDateOpen(false);
                         }}
                         disabled={(date) => date < new Date("1900-01-01")}
                         initialFocus
@@ -777,12 +852,16 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                         {field.value?.length ? (
                           <div className="flex flex-wrap gap-1">
                             {field.value.map((userId) => {
-                              const user = users.find(u => u.id === userId)
+                              const user = users.find((u) => u.id === userId);
                               return user ? (
-                                <Badge key={userId} variant="secondary" className="text-xs">
+                                <Badge
+                                  key={userId}
+                                  variant="secondary"
+                                  className="text-xs"
+                                >
                                   {user.name}
                                 </Badge>
-                              ) : null
+                              ) : null;
                             })}
                           </div>
                         ) : (
@@ -801,17 +880,28 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                               key={user.id}
                               value={user.id}
                               onSelect={() => {
-                                const currentAssignees = field.value || []
-                                const isSelected = currentAssignees.includes(user.id)
+                                const currentAssignees = field.value || [];
+                                const isSelected = currentAssignees.includes(
+                                  user.id
+                                );
                                 if (isSelected) {
-                                  field.onChange(currentAssignees.filter(id => id !== user.id))
+                                  field.onChange(
+                                    currentAssignees.filter(
+                                      (id) => id !== user.id
+                                    )
+                                  );
                                 } else {
-                                  field.onChange([...currentAssignees, user.id])
+                                  field.onChange([
+                                    ...currentAssignees,
+                                    user.id,
+                                  ]);
                                 }
                               }}
                             >
                               <Checkbox
-                                checked={field.value?.includes(user.id) || false}
+                                checked={
+                                  field.value?.includes(user.id) || false
+                                }
                                 className="mr-2"
                               />
                               {user.name} ({user.email})
@@ -848,16 +938,22 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                         {field.value?.length ? (
                           <div className="flex flex-wrap gap-1">
                             {field.value.map((tagId) => {
-                              const tag = tags.find(t => t.id === tagId)
+                              const tag = tags.find((t) => t.id === tagId);
                               return tag ? (
-                                <Badge key={tagId} variant="secondary" className="text-xs flex items-center gap-1">
-                                  <div 
-                                    className="w-2 h-2 rounded-full" 
-                                    style={{ backgroundColor: tag.color || '#gray' }}
+                                <Badge
+                                  key={tagId}
+                                  variant="secondary"
+                                  className="text-xs flex items-center gap-1"
+                                >
+                                  <div
+                                    className="w-2 h-2 rounded-full"
+                                    style={{
+                                      backgroundColor: tag.color || "#gray",
+                                    }}
                                   />
                                   {tag.name}
                                 </Badge>
-                              ) : null
+                              ) : null;
                             })}
                           </div>
                         ) : (
@@ -876,12 +972,14 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                               key={tag.id}
                               value={tag.id}
                               onSelect={() => {
-                                const currentTags = field.value || []
-                                const isSelected = currentTags.includes(tag.id)
+                                const currentTags = field.value || [];
+                                const isSelected = currentTags.includes(tag.id);
                                 if (isSelected) {
-                                  field.onChange(currentTags.filter(id => id !== tag.id))
+                                  field.onChange(
+                                    currentTags.filter((id) => id !== tag.id)
+                                  );
                                 } else {
-                                  field.onChange([...currentTags, tag.id])
+                                  field.onChange([...currentTags, tag.id]);
                                 }
                               }}
                             >
@@ -889,9 +987,11 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                                 checked={field.value?.includes(tag.id) || false}
                                 className="mr-2"
                               />
-                              <div 
-                                className="w-2 h-2 rounded-full mr-2" 
-                                style={{ backgroundColor: tag.color || '#gray' }}
+                              <div
+                                className="w-2 h-2 rounded-full mr-2"
+                                style={{
+                                  backgroundColor: tag.color || "#gray",
+                                }}
                               />
                               {tag.name}
                             </CommandItem>
@@ -919,9 +1019,12 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                   Add Subtask
                 </Button>
               </div>
-              
+
               {subTaskFields.map((field, index) => (
-                <div key={field.id} className="flex gap-2 items-start p-4 border rounded-lg">
+                <div
+                  key={field.id}
+                  className="flex gap-2 items-start p-4 border rounded-lg"
+                >
                   <div className="flex-1 space-y-2">
                     <FormField
                       control={form.control}
@@ -941,7 +1044,10 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                       render={({ field }) => (
                         <FormItem>
                           <FormControl>
-                            <Textarea placeholder="Subtask description (optional)" {...field} />
+                            <Textarea
+                              placeholder="Subtask description (optional)"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -952,7 +1058,10 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                       name={`subTasks.${index}.userId`}
                       render={({ field }) => (
                         <FormItem>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Assign to (optional)" />
@@ -987,7 +1096,7 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
             {/* File Attachments Section */}
             <div className="space-y-4">
               <FormLabel>Attachments</FormLabel>
-              
+
               {/* File Upload Area */}
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                 <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
@@ -1004,7 +1113,7 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
                       multiple
                       onChange={(e) => {
                         if (e.target.files) {
-                          handleFileUpload(e.target.files)
+                          handleFileUpload(e.target.files);
                         }
                       }}
                     />
@@ -1016,33 +1125,43 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
               </div>
 
               {/* Uploaded Files List */}
-              {form.watch("attachments") && form.watch("attachments")!.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Uploaded Files:</p>
-                  {form.watch("attachments")!.map((attachment, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{attachment.fileName}</p>
-                        <p className="text-xs text-gray-500">
-                          {(attachment.fileSize / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeAttachment(index)}
+              {form.watch("attachments") &&
+                form.watch("attachments")!.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Uploaded Files:</p>
+                    {form.watch("attachments")!.map((attachment, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-2 bg-gray-50 rounded"
                       >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">
+                            {attachment.fileName}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {(attachment.fileSize / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeAttachment(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={isLoading}>
@@ -1053,5 +1172,5 @@ export function CreateTaskDialog({ children, projectId, onTaskCreated, workflowS
         </Form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

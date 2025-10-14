@@ -1,37 +1,43 @@
-'use client'
+"use client";
 
-import React, { useState, useEffect } from 'react'
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
+import React, { useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Separator } from '@/components/ui/separator'
-import { Progress } from '@/components/ui/progress'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Label } from '@/components/ui/label'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { 
-  CalendarIcon, 
-  Clock, 
-  Paperclip, 
-  MessageSquare, 
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { FaFilePdf, FaFileExcel, FaFileWord, FaHtml5 } from "react-icons/fa";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  CalendarIcon,
+  Clock,
+  Eye,
+  Paperclip,
+  MessageSquare,
   CheckSquare,
   Users,
   Edit2,
@@ -43,409 +49,452 @@ import {
   Plus,
   Star,
   Download,
-  Upload
-} from 'lucide-react'
-import { format } from 'date-fns'
-import { cn } from '@/lib/utils'
+  Upload,
+  FileJson,
+} from "lucide-react";
+import { ViewImageModal } from "./view-image-modal";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 // Types
 interface User {
-  id: string
-  name: string
-  email: string
-  avatarUrl?: string
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
 }
 
 interface CustomField {
-  id: string
-  customFieldId: string
-  value: string | null
+  id: string;
+  customFieldId: string;
+  value: string | null;
   customField: {
-    id: string
-    name: string
-    type: 'TEXT' | 'NUMBER' | 'DROPDOWN' | 'MULTI_SELECT' | 'BOOLEAN' | 'DATE' | 'USER' | 'EMAIL' | 'URL' | 'TEXTAREA' | 'CHECKBOX' | 'RATING'
-    description?: string
-    options?: string
-    placeholder?: string
-    isRequired: boolean
-    min?: number
-    max?: number
-  }
+    id: string;
+    name: string;
+    type:
+      | "TEXT"
+      | "NUMBER"
+      | "DROPDOWN"
+      | "MULTI_SELECT"
+      | "BOOLEAN"
+      | "DATE"
+      | "USER"
+      | "EMAIL"
+      | "URL"
+      | "TEXTAREA"
+      | "CHECKBOX"
+      | "RATING";
+    description?: string;
+    options?: string;
+    placeholder?: string;
+    isRequired: boolean;
+    min?: number;
+    max?: number;
+  };
 }
 
 interface Subtask {
-  id: string
-  title: string
-  description?: string
-  completed: boolean
-  createdAt: Date
-  updatedAt: Date
+  id: string;
+  title: string;
+  description?: string;
+  completed: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 interface Comment {
-  id: string
-  content: string
-  createdAt: Date
-  updatedAt: Date
-  user: User
+  id: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+  user: User;
 }
 
 interface Attachment {
-  id: string
-  fileName: string
-  filePath: string
-  fileSize: number
-  mimeType: string
-  uploadedAt: Date
-  uploadedBy: string
-  user: User
+  id: string;
+  fileName: string;
+  fileData: Record<string, number>;
+  fileType: string;
+  fileExtension: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: Date;
+  uploadedBy: string;
+  user: User;
 }
 
 interface TimeLog {
-  id: string
-  hours: number
-  description?: string
-  logDate: Date
-  createdAt: Date
-  user: User
+  id: string;
+  hours: number;
+  description?: string;
+  logDate: Date;
+  createdAt: Date;
+  user: User;
 }
 
 interface TaskDetail {
-  id: string
-  title: string
-  description?: string
-  status: 'TODO' | 'IN_PROGRESS' | 'DONE'
-  customStatus?: string
-  statusCategory?: string
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
-  type: string
-  customType?: string
-  assignees: User[]
-  createdBy?: User
-  creator?: User  // API sometimes returns 'creator' instead of 'createdBy'
-  createdAt: Date
-  updatedAt: Date
-  dueDate?: Date
-  projectId?: string
+  id: string;
+  title: string;
+  description?: string;
+  status: "TODO" | "IN_PROGRESS" | "DONE";
+  customStatus?: string;
+  statusCategory?: string;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  type: string;
+  customType?: string;
+  assignees: User[];
+  createdBy?: User;
+  creator?: User; // API sometimes returns 'creator' instead of 'createdBy'
+  createdAt: Date;
+  updatedAt: Date;
+  dueDate?: Date;
+  projectId?: string;
   project?: {
-    id: string
-    title: string
-    description?: string
-  }
-  customFields?: CustomField[]
-  subtasks?: Subtask[]
-  comments?: Comment[]
-  attachments?: Attachment[]
-  timeLogs?: TimeLog[]
+    id: string;
+    title: string;
+    description?: string;
+  };
+  customFields?: CustomField[];
+  subtasks?: Subtask[];
+  comments?: Comment[];
+  attachments?: Attachment[];
+  timeLogs?: TimeLog[];
 }
 
 interface ComprehensiveTaskDetailModalProps {
-  taskId: string
-  isOpen: boolean
-  onClose: () => void
-  onUpdate?: () => void
+  taskId: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onUpdate?: () => void;
 }
 
-export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModalProps> = ({
-  taskId,
-  isOpen,
-  onClose,
-  onUpdate
-}) => {
-  const [task, setTask] = useState<TaskDetail | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
-  
+export const ComprehensiveTaskDetailModal: React.FC<
+  ComprehensiveTaskDetailModalProps
+> = ({ taskId, isOpen, onClose, onUpdate }) => {
+  const [task, setTask] = useState<TaskDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [isViewingImage, setIsViewingImage] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   // Form states
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
-  const [isAddingSubtask, setIsAddingSubtask] = useState(false)
-  const [newCommentText, setNewCommentText] = useState('')
-  const [isPostingComment, setIsPostingComment] = useState(false)
-  const [commentFiles, setCommentFiles] = useState<FileList | null>(null)
-  const [timeLogHours, setTimeLogHours] = useState('')
-  const [timeLogDescription, setTimeLogDescription] = useState('')
-  const [isLoggingTime, setIsLoggingTime] = useState(false)
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [isAddingSubtask, setIsAddingSubtask] = useState(false);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const [commentFiles, setCommentFiles] = useState<FileList | null>(null);
+  const [timeLogHours, setTimeLogHours] = useState("");
+  const [timeLogDescription, setTimeLogDescription] = useState("");
+  const [isLoggingTime, setIsLoggingTime] = useState(false);
 
   // Load task details
   useEffect(() => {
     if (isOpen && taskId) {
-      loadTaskDetails()
+      loadTaskDetails();
     }
-  }, [isOpen, taskId])
+  }, [isOpen, taskId]);
 
   const loadTaskDetails = async () => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const response = await fetch(`/api/tasks/${taskId}`)
+      const response = await fetch(`/api/tasks/${taskId}`);
       if (response.ok) {
-        const data = await response.json()
+        const data = await response.json();
         // Normalize API response - handle both 'creator' and 'createdBy'
         if (data.creator && !data.createdBy) {
-          data.createdBy = data.creator
+          data.createdBy = data.creator;
         }
-        setTask(data)
+        setTask(data);
       }
     } catch (error) {
-      console.error('Error loading task:', error)
+      console.error("Error loading task:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleUpdate = async (updates: Partial<TaskDetail>) => {
     try {
-      console.log('Updating task with:', updates)
+      console.log("Updating task with:", updates);
       const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      })
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
       if (response.ok) {
-        const updatedTask = await response.json()
-        console.log('Task updated successfully:', updatedTask)
+        const updatedTask = await response.json();
+        console.log("Task updated successfully:", updatedTask);
         // Normalize API response - handle both 'creator' and 'createdBy'
         if (updatedTask.creator && !updatedTask.createdBy) {
-          updatedTask.createdBy = updatedTask.creator
+          updatedTask.createdBy = updatedTask.creator;
         }
         // Update local state immediately
-        setTask(updatedTask)
-        onUpdate?.()
+        setTask(updatedTask);
+        onUpdate?.();
       } else {
-        const error = await response.json()
-        console.error('Failed to update task:', error)
-        alert(`Failed to update task: ${error.error || 'Unknown error'}`)
+        const error = await response.json();
+        console.error("Failed to update task:", error);
+        alert(`Failed to update task: ${error.error || "Unknown error"}`);
       }
     } catch (error) {
-      console.error('Error updating task:', error)
-      alert('Error updating task. Please try again.')
+      console.error("Error updating task:", error);
+      alert("Error updating task. Please try again.");
     }
-  }
+  };
 
   const handleDelete = async () => {
-    if (confirm('Are you sure you want to delete this task?')) {
+    if (confirm("Are you sure you want to delete this task?")) {
       try {
         const response = await fetch(`/api/tasks/${taskId}`, {
-          method: 'DELETE'
-        })
+          method: "DELETE",
+        });
         if (response.ok) {
-          onClose()
-          onUpdate?.()
+          onClose();
+          onUpdate?.();
         }
       } catch (error) {
-        console.error('Error deleting task:', error)
+        console.error("Error deleting task:", error);
       }
     }
-  }
+  };
 
   const handleDuplicate = async () => {
     try {
       const response = await fetch(`/api/tasks/${taskId}/duplicate`, {
-        method: 'POST'
-      })
+        method: "POST",
+      });
       if (response.ok) {
-        onUpdate?.()
+        onUpdate?.();
       }
     } catch (error) {
-      console.error('Error duplicating task:', error)
+      console.error("Error duplicating task:", error);
     }
-  }
+  };
 
   // Subtask handlers
   const handleAddSubtask = async () => {
-    if (!newSubtaskTitle.trim()) return
-    
-    setIsAddingSubtask(true)
+    if (!newSubtaskTitle.trim()) return;
+
+    setIsAddingSubtask(true);
     try {
-      console.log('Adding subtask:', newSubtaskTitle.trim())
+      console.log("Adding subtask:", newSubtaskTitle.trim());
       const response = await fetch(`/api/tasks/${taskId}/subtasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newSubtaskTitle.trim() })
-      })
-      
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newSubtaskTitle.trim() }),
+      });
+
       if (response.ok) {
-        const newSubtask = await response.json()
-        console.log('Subtask added successfully:', newSubtask)
-        setNewSubtaskTitle('')
-        await loadTaskDetails()
+        const newSubtask = await response.json();
+        console.log("Subtask added successfully:", newSubtask);
+        setNewSubtaskTitle("");
+        await loadTaskDetails();
       } else {
-        const error = await response.json()
-        console.error('Failed to add subtask:', error)
-        alert(`Failed to add subtask: ${error.error || 'Unknown error'}`)
+        const error = await response.json();
+        console.error("Failed to add subtask:", error);
+        alert(`Failed to add subtask: ${error.error || "Unknown error"}`);
       }
     } catch (error) {
-      console.error('Error adding subtask:', error)
-      alert('Error adding subtask. Please try again.')
+      console.error("Error adding subtask:", error);
+      alert("Error adding subtask. Please try again.");
     } finally {
-      setIsAddingSubtask(false)
+      setIsAddingSubtask(false);
     }
-  }
-
+  };
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.includes("pdf"))
+      return <FaFilePdf className="text-red-600 h-12 w-12" />;
+    if (mimeType.includes("excel") || mimeType.includes("csv"))
+      return <FaFileExcel className="text-green-600 h-12 w-12" />;
+    if (mimeType.includes("word") || mimeType.includes("doc"))
+      return <FaFileWord className="text-blue-600 h-12 w-12" />;
+    if (mimeType.includes("html"))
+      return <FaHtml5 className="text-blue-600 h-12 w-12" />;
+    if (mimeType.includes("json"))
+      return <FileJson className="text-gray-500 h-12 w-12" />;
+    return <Paperclip className="text-gray-500 h-12 w-12" />;
+  };
   const handleToggleSubtask = async (subtaskId: string, completed: boolean) => {
     try {
-      const response = await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed })
-      })
-      
+      const response = await fetch(
+        `/api/tasks/${taskId}/subtasks/${subtaskId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ completed }),
+        }
+      );
+
       if (response.ok) {
-        await loadTaskDetails()
+        await loadTaskDetails();
       }
     } catch (error) {
-      console.error('Error toggling subtask:', error)
+      console.error("Error toggling subtask:", error);
     }
-  }
+  };
 
   // Comment handlers
   const handlePostComment = async () => {
-    if (!newCommentText.trim() && !commentFiles) return
-    
-    setIsPostingComment(true)
+    if (!newCommentText.trim() && !commentFiles) return;
+
+    setIsPostingComment(true);
     try {
-      console.log('Posting comment:', newCommentText.trim())
-      
+      console.log("Posting comment:", newCommentText.trim());
+
       // Post comment first
       const commentResponse = await fetch(`/api/tasks/${taskId}/comments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newCommentText.trim() || '(File attached)' })
-      })
-      
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: newCommentText.trim() || "(File attached)",
+        }),
+      });
+
       if (!commentResponse.ok) {
-        const error = await commentResponse.json()
-        console.error('Failed to post comment:', error)
-        alert(`Failed to post comment: ${error.error || 'Unknown error'}`)
-        return
+        const error = await commentResponse.json();
+        console.error("Failed to post comment:", error);
+        alert(`Failed to post comment: ${error.error || "Unknown error"}`);
+        return;
       }
 
-      const newComment = await commentResponse.json()
-      console.log('Comment posted successfully:', newComment)
-      
+      const newComment = await commentResponse.json();
+      console.log("Comment posted successfully:", newComment);
+
       // Upload files if any
       if (commentFiles && commentFiles.length > 0) {
-        console.log('Uploading', commentFiles.length, 'file(s)...')
+        console.log("Uploading", commentFiles.length, "file(s)...");
         for (let i = 0; i < commentFiles.length; i++) {
-          const file = commentFiles[i]
-          const formData = new FormData()
-          formData.append('file', file)
-          formData.append('fileName', file.name)
-          formData.append('fileSize', file.size.toString())
-          formData.append('mimeType', file.type)
-          
-          const uploadResponse = await fetch(`/api/tasks/${taskId}/attachments`, {
-            method: 'POST',
-            body: formData
-          })
-          
+          const file = commentFiles[i];
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("fileName", file.name);
+          formData.append("fileSize", file.size.toString());
+          formData.append("mimeType", file.type);
+
+          const uploadResponse = await fetch(
+            `/api/tasks/${taskId}/attachments`,
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
+
           if (!uploadResponse.ok) {
-            console.error('Failed to upload file:', file.name)
+            console.error("Failed to upload file:", file.name);
           } else {
-            console.log('File uploaded successfully:', file.name)
+            console.log("File uploaded successfully:", file.name);
           }
         }
       }
-      
+
       // Clear form
-      setNewCommentText('')
-      setCommentFiles(null)
+      setNewCommentText("");
+      setCommentFiles(null);
       // Reset file input
-      const fileInput = document.getElementById('comment-file-input') as HTMLInputElement
-      if (fileInput) fileInput.value = ''
-      
-      await loadTaskDetails()
+      const fileInput = document.getElementById(
+        "comment-file-input"
+      ) as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
+
+      await loadTaskDetails();
     } catch (error) {
-      console.error('Error posting comment:', error)
-      alert('Error posting comment. Please try again.')
+      console.error("Error posting comment:", error);
+      alert("Error posting comment. Please try again.");
     } finally {
-      setIsPostingComment(false)
+      setIsPostingComment(false);
     }
-  }
+  };
 
   // Time log handlers
   const handleLogTime = async () => {
-    const hours = parseFloat(timeLogHours)
-    if (!hours || hours <= 0) return
-    
-    setIsLoggingTime(true)
+    const hours = parseFloat(timeLogHours);
+    if (!hours || hours <= 0) return;
+
+    setIsLoggingTime(true);
     try {
       const response = await fetch(`/api/tasks/${taskId}/time-logs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           hoursSpent: hours,
-          description: timeLogDescription.trim() || undefined
-        })
-      })
-      
+          description: timeLogDescription.trim() || undefined,
+        }),
+      });
+
       if (response.ok) {
-        setTimeLogHours('')
-        setTimeLogDescription('')
-        await loadTaskDetails()
+        setTimeLogHours("");
+        setTimeLogDescription("");
+        await loadTaskDetails();
       }
     } catch (error) {
-      console.error('Error logging time:', error)
+      console.error("Error logging time:", error);
     } finally {
-      setIsLoggingTime(false)
+      setIsLoggingTime(false);
     }
-  }
+  };
 
   // Custom field handler
   const handleCustomFieldUpdate = async (customFieldId: string, value: any) => {
     try {
-      console.log('Updating custom field:', customFieldId, value)
+      console.log("Updating custom field:", customFieldId, value);
       const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customFields: [{
-            customFieldId,
-            value: value?.toString() || null
-          }]
-        })
-      })
-      
+          customFields: [
+            {
+              customFieldId,
+              value: value?.toString() || null,
+            },
+          ],
+        }),
+      });
+
       if (response.ok) {
-        console.log('Custom field updated successfully')
-        await loadTaskDetails()
+        console.log("Custom field updated successfully");
+        await loadTaskDetails();
       } else {
-        const error = await response.json()
-        console.error('Failed to update custom field:', error)
+        const error = await response.json();
+        console.error("Failed to update custom field:", error);
       }
     } catch (error) {
-      console.error('Error updating custom field:', error)
+      console.error("Error updating custom field:", error);
     }
-  }
+  };
 
   if (isLoading || !task) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent showCloseButton={false} className="!max-w-[95vw] w-[95vw] max-h-[90vh]">
+        <DialogContent
+          showCloseButton={false}
+          className="!max-w-[95vw] w-[95vw] max-h-[90vh]"
+        >
           <div className="flex items-center justify-center h-64">
             <div className="text-muted-foreground">Loading task details...</div>
           </div>
         </DialogContent>
       </Dialog>
-    )
+    );
   }
 
   // Safely access arrays with fallbacks
-  const subtasks = task.subtasks || []
-  const comments = task.comments || []
-  const attachments = task.attachments || []
-  const timeLogs = task.timeLogs || []
+  const subtasks = task.subtasks || [];
+  const comments = task.comments || [];
+  const attachments = task.attachments || [];
+  const timeLogs = task.timeLogs || [];
 
-  const completedSubtasks = subtasks.filter(st => st.completed).length
-  const subtaskProgress = subtasks.length > 0 
-    ? (completedSubtasks / subtasks.length) * 100 
-    : 0
+  const completedSubtasks = subtasks.filter((st) => st.completed).length;
+  const subtaskProgress =
+    subtasks.length > 0 ? (completedSubtasks / subtasks.length) * 100 : 0;
 
-  const totalTimeLogged = timeLogs.reduce((sum, log) => sum + log.hours, 0)
+  const totalTimeLogged = timeLogs.reduce((sum, log) => sum + log.hours, 0);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent showCloseButton={false} className="!max-w-[95vw] w-[95vw] max-h-[90vh] p-0 overflow-hidden">
+      <DialogContent
+        showCloseButton={false}
+        className="!max-w-[95vw] w-[95vw] max-h-[90vh] p-0 overflow-hidden"
+      >
         <div className="flex flex-col h-full">
           {/* Header */}
           <DialogHeader className="px-6 pt-6 pb-4 border-b">
@@ -456,19 +505,18 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                     {task.customType || task.type}
                   </Badge>
                   {task.project && (
-                    <Badge 
-                      variant="secondary" 
-                      className="text-xs"
-                    >
+                    <Badge variant="secondary" className="text-xs">
                       {task.project.title}
                     </Badge>
                   )}
                 </div>
                 <DialogTitle className="text-2xl mb-2">
                   {isEditing ? (
-                    <Input 
+                    <Input
                       value={task.title}
-                      onChange={(e) => setTask({...task, title: e.target.value})}
+                      onChange={(e) =>
+                        setTask({ ...task, title: e.target.value })
+                      }
                       className="text-2xl font-semibold"
                     />
                   ) : (
@@ -476,22 +524,29 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                   )}
                 </DialogTitle>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span>Created by {task.createdBy?.name || task.creator?.name || 'Unknown'}</span>
+                  <span>
+                    Created by{" "}
+                    {task.createdBy?.name || task.creator?.name || "Unknown"}
+                  </span>
                   <span>•</span>
-                  <span>{format(new Date(task.createdAt), 'MMM d, yyyy')}</span>
+                  <span>{format(new Date(task.createdAt), "MMM d, yyyy")}</span>
                   {task.dueDate && (
                     <>
                       <span>•</span>
                       <span className="flex items-center gap-1">
                         <CalendarIcon className="h-3 w-3" />
-                        Due {format(new Date(task.dueDate), 'MMM d, yyyy')}
+                        Due {format(new Date(task.dueDate), "MMM d, yyyy")}
                       </span>
                     </>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={() => setIsEditing(!isEditing)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsEditing(!isEditing)}
+                >
                   <Edit2 className="h-4 w-4" />
                 </Button>
                 <Button variant="ghost" size="icon" onClick={handleDuplicate}>
@@ -519,17 +574,21 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                   <div className="p-6 space-y-6">
                     {/* Description */}
                     <div>
-                      <Label className="text-sm font-semibold">Description</Label>
+                      <Label className="text-sm font-semibold">
+                        Description
+                      </Label>
                       {isEditing ? (
-                        <Textarea 
-                          value={task.description || ''}
-                          onChange={(e) => setTask({...task, description: e.target.value})}
+                        <Textarea
+                          value={task.description || ""}
+                          onChange={(e) =>
+                            setTask({ ...task, description: e.target.value })
+                          }
                           placeholder="Add a description..."
                           className="mt-2 min-h-[100px]"
                         />
                       ) : (
                         <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
-                          {task.description || 'No description provided'}
+                          {task.description || "No description provided"}
                         </p>
                       )}
                     </div>
@@ -540,14 +599,21 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                     {task.customFields && task.customFields.length > 0 && (
                       <>
                         <div>
-                          <Label className="text-sm font-semibold mb-4 block">Custom Fields</Label>
+                          <Label className="text-sm font-semibold mb-4 block">
+                            Custom Fields
+                          </Label>
                           <div className="space-y-4">
                             {(task.customFields || []).map((cf) => (
-                              <CustomFieldRenderer 
-                                key={cf.id} 
+                              <CustomFieldRenderer
+                                key={cf.id}
                                 customField={cf}
                                 isEditing={isEditing}
-                                onUpdate={(value) => handleCustomFieldUpdate(cf.customFieldId, value)}
+                                onUpdate={(value) =>
+                                  handleCustomFieldUpdate(
+                                    cf.customFieldId,
+                                    value
+                                  )
+                                }
                               />
                             ))}
                           </div>
@@ -569,21 +635,34 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                       )}
                       <div className="space-y-2 mb-3">
                         {subtasks.map((subtask) => (
-                          <div key={subtask.id} className="flex items-center gap-2 p-2 rounded hover:bg-accent">
-                            <Checkbox 
+                          <div
+                            key={subtask.id}
+                            className="flex items-center gap-2 p-2 rounded hover:bg-accent"
+                          >
+                            <Checkbox
                               checked={subtask.completed}
-                              onCheckedChange={(checked) => handleToggleSubtask(subtask.id, checked as boolean)}
+                              onCheckedChange={(checked) =>
+                                handleToggleSubtask(
+                                  subtask.id,
+                                  checked as boolean
+                                )
+                              }
                             />
-                            <span className={cn(
-                              "flex-1 text-sm",
-                              subtask.completed && "line-through text-muted-foreground"
-                            )}>
+                            <span
+                              className={cn(
+                                "flex-1 text-sm",
+                                subtask.completed &&
+                                  "line-through text-muted-foreground"
+                              )}
+                            >
                               {subtask.title}
                             </span>
                           </div>
                         ))}
                         {subtasks.length === 0 && (
-                          <p className="text-sm text-muted-foreground mb-2">No subtasks yet</p>
+                          <p className="text-sm text-muted-foreground mb-2">
+                            No subtasks yet
+                          </p>
                         )}
                       </div>
                       <div className="flex gap-2">
@@ -592,14 +671,14 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                           value={newSubtaskTitle}
                           onChange={(e) => setNewSubtaskTitle(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault()
-                              handleAddSubtask()
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleAddSubtask();
                             }
                           }}
                         />
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           onClick={handleAddSubtask}
                           disabled={isAddingSubtask || !newSubtaskTitle.trim()}
                         >
@@ -620,83 +699,97 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         {attachments.map((attachment) => {
-                          const isImage = attachment.mimeType.startsWith('image/')
-                          const isPDF = attachment.mimeType === 'application/pdf'
-                          
+                          const isImage =
+                            attachment.mimeType.startsWith("image/");
+                          const imageUrl =
+                            isImage && attachment.fileData
+                              ? `data:${
+                                  attachment.mimeType
+                                };base64,${Buffer.from(
+                                  Object.values(attachment.fileData)
+                                ).toString("base64")}`
+                              : "";
                           return (
-                            <div key={attachment.id} className="group relative border rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                            <div
+                              key={attachment.id}
+                              className="group relative border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                            >
                               {/* Preview */}
                               {isImage ? (
                                 <div className="aspect-video bg-muted relative">
-                                  <img 
-                                    src={attachment.filePath} 
+                                  <img
+                                    src={imageUrl}
                                     alt={attachment.fileName}
                                     className="w-full h-full object-cover"
                                     onError={(e) => {
                                       // Fallback if image fails to load
-                                      e.currentTarget.style.display = 'none'
+                                      e.currentTarget.style.display = "none";
                                       e.currentTarget.parentElement!.innerHTML = `
                                         <div class="w-full h-full flex items-center justify-center">
                                           <svg class="w-12 h-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                           </svg>
                                         </div>
-                                      `
+                                      `;
                                     }}
                                   />
                                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-                                    <a 
-                                      href={attachment.filePath} 
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => setIsViewingImage(true)}
                                     >
-                                      <Button variant="secondary" size="sm">
-                                        <Download className="h-4 w-4 mr-1" />
-                                        View
-                                      </Button>
-                                    </a>
+                                      <Eye className="h-4 w-4 mr-1" />
+                                      View
+                                    </Button>
+                                    <ViewImageModal
+                                      isOpen={isViewingImage}
+                                      onClose={() => setIsViewingImage(false)}
+                                      imageUrl={imageUrl}
+                                    />
                                   </div>
                                 </div>
                               ) : (
                                 <div className="aspect-video bg-muted flex flex-col items-center justify-center p-4">
-                                  {isPDF ? (
-                                    <div className="text-red-600 mb-2">
-                                      <svg className="w-12 h-12" fill="currentColor" viewBox="0 0 20 20">
-                                        <path d="M4 18h12V6h-4V2H4v16zm-2 1V0h12l4 4v16H2v-1z"/>
-                                        <text x="10" y="14" fontSize="8" textAnchor="middle" fill="currentColor">PDF</text>
-                                      </svg>
-                                    </div>
-                                  ) : (
-                                    <Paperclip className="h-12 w-12 text-muted-foreground mb-2" />
-                                  )}
+                                  <div className="text-red-600 mb-2">
+                                    {getFileIcon(attachment.mimeType)}
+                                  </div>
                                   <Button variant="outline" size="sm" asChild>
-                                    <a href={attachment.filePath} download={attachment.fileName}>
+                                    <a
+                                      href={imageUrl}
+                                      download={attachment.fileName}
+                                    >
                                       <Download className="h-3 w-3 mr-1" />
                                       Download
                                     </a>
                                   </Button>
                                 </div>
                               )}
-                              
+
                               {/* File Info */}
                               <div className="p-2 bg-background">
-                                <p className="text-xs font-medium truncate" title={attachment.fileName}>
+                                <p
+                                  className="text-xs font-medium truncate"
+                                  title={attachment.fileName}
+                                >
                                   {attachment.fileName}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {(attachment.fileSize / 1024).toFixed(1)} KB • {attachment.user.name}
+                                  {(attachment.fileSize / 1024).toFixed(1)} KB •{" "}
+                                  {attachment.user.name}
                                 </p>
                               </div>
                             </div>
-                          )
+                          );
                         })}
                       </div>
-                      
+
                       {attachments.length === 0 && (
                         <div className="text-center py-8 border-2 border-dashed rounded-lg">
                           <Paperclip className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-sm text-muted-foreground">No attachments yet</p>
+                          <p className="text-sm text-muted-foreground">
+                            No attachments yet
+                          </p>
                           <p className="text-xs text-muted-foreground mt-1">
                             Attach files when posting comments
                           </p>
@@ -718,50 +811,65 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                             <Avatar className="h-8 w-8">
                               <AvatarImage src={comment.user.avatarUrl} />
                               <AvatarFallback className="text-xs">
-                                {comment.user.name.substring(0, 2).toUpperCase()}
+                                {comment.user.name
+                                  .substring(0, 2)
+                                  .toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-sm font-medium">{comment.user.name}</span>
+                                <span className="text-sm font-medium">
+                                  {comment.user.name}
+                                </span>
                                 <span className="text-xs text-muted-foreground">
-                                  {format(new Date(comment.createdAt), 'MMM d, yyyy h:mm a')}
+                                  {format(
+                                    new Date(comment.createdAt),
+                                    "MMM d, yyyy h:mm a"
+                                  )}
                                 </span>
                               </div>
-                              <p className="text-sm text-muted-foreground">{comment.content}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {comment.content}
+                              </p>
                             </div>
                           </div>
                         ))}
                         {comments.length === 0 && (
-                          <p className="text-sm text-muted-foreground">No comments yet</p>
+                          <p className="text-sm text-muted-foreground">
+                            No comments yet
+                          </p>
                         )}
                       </div>
                       <div className="mt-4">
-                        <Textarea 
-                          placeholder="Add a comment..." 
+                        <Textarea
+                          placeholder="Add a comment..."
                           className="min-h-[80px]"
                           value={newCommentText}
                           onChange={(e) => setNewCommentText(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                              e.preventDefault()
-                              handlePostComment()
+                            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                              e.preventDefault();
+                              handlePostComment();
                             }
                           }}
                         />
-                        
+
                         {/* File Preview */}
                         {commentFiles && commentFiles.length > 0 && (
                           <div className="mt-3 p-3 border rounded-lg bg-muted/30">
                             <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-medium">Attached Files ({commentFiles.length})</span>
+                              <span className="text-xs font-medium">
+                                Attached Files ({commentFiles.length})
+                              </span>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                  setCommentFiles(null)
-                                  const fileInput = document.getElementById('comment-file-input') as HTMLInputElement
-                                  if (fileInput) fileInput.value = ''
+                                  setCommentFiles(null);
+                                  const fileInput = document.getElementById(
+                                    "comment-file-input"
+                                  ) as HTMLInputElement;
+                                  if (fileInput) fileInput.value = "";
                                 }}
                               >
                                 <X className="h-3 w-3" />
@@ -769,15 +877,18 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                               {Array.from(commentFiles).map((file, index) => {
-                                const isImage = file.type.startsWith('image/')
-                                const fileUrl = URL.createObjectURL(file)
-                                
+                                const isImage = file.type.startsWith("image/");
+                                const fileUrl = URL.createObjectURL(file);
+
                                 return (
-                                  <div key={index} className="relative group border rounded p-2 bg-background">
+                                  <div
+                                    key={index}
+                                    className="relative group border rounded p-2 bg-background"
+                                  >
                                     {isImage ? (
                                       <div className="aspect-video relative rounded overflow-hidden bg-muted">
-                                        <img 
-                                          src={fileUrl} 
+                                        <img
+                                          src={fileUrl}
                                           alt={file.name}
                                           className="w-full h-full object-cover"
                                         />
@@ -787,17 +898,22 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                                         <Paperclip className="h-8 w-8 text-muted-foreground" />
                                       </div>
                                     )}
-                                    <p className="text-xs truncate mt-1" title={file.name}>{file.name}</p>
+                                    <p
+                                      className="text-xs truncate mt-1"
+                                      title={file.name}
+                                    >
+                                      {file.name}
+                                    </p>
                                     <p className="text-xs text-muted-foreground">
                                       {(file.size / 1024).toFixed(1)} KB
                                     </p>
                                   </div>
-                                )
+                                );
                               })}
                             </div>
                           </div>
                         )}
-                        
+
                         <div className="flex justify-between items-center mt-2">
                           <div className="flex items-center gap-2">
                             <input
@@ -808,11 +924,15 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                               className="hidden"
                               onChange={(e) => setCommentFiles(e.target.files)}
                             />
-                            <Button 
+                            <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => document.getElementById('comment-file-input')?.click()}
+                              onClick={() =>
+                                document
+                                  .getElementById("comment-file-input")
+                                  ?.click()
+                              }
                             >
                               <Paperclip className="h-4 w-4 mr-1" />
                               Attach Files
@@ -821,12 +941,15 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                               Ctrl+Enter to post
                             </span>
                           </div>
-                          <Button 
+                          <Button
                             size="sm"
                             onClick={handlePostComment}
-                            disabled={isPostingComment || (!newCommentText.trim() && !commentFiles)}
+                            disabled={
+                              isPostingComment ||
+                              (!newCommentText.trim() && !commentFiles)
+                            }
                           >
-                            {isPostingComment ? 'Posting...' : 'Post Comment'}
+                            {isPostingComment ? "Posting..." : "Post Comment"}
                           </Button>
                         </div>
                       </div>
@@ -841,17 +964,25 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                   <div className="p-6 space-y-6">
                     {/* Status */}
                     <div>
-                      <Label className="text-xs font-semibold text-muted-foreground mb-2 block">STATUS</Label>
-                      <Select 
+                      <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
+                        STATUS
+                      </Label>
+                      <Select
                         value={task.customStatus || task.status}
-                        onValueChange={(value) => handleUpdate({ status: value as 'TODO' | 'IN_PROGRESS' | 'DONE' })}
+                        onValueChange={(value) =>
+                          handleUpdate({
+                            status: value as "TODO" | "IN_PROGRESS" | "DONE",
+                          })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="TODO">To Do</SelectItem>
-                          <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                          <SelectItem value="IN_PROGRESS">
+                            In Progress
+                          </SelectItem>
                           <SelectItem value="DONE">Done</SelectItem>
                         </SelectContent>
                       </Select>
@@ -859,10 +990,20 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
 
                     {/* Priority */}
                     <div>
-                      <Label className="text-xs font-semibold text-muted-foreground mb-2 block">PRIORITY</Label>
-                      <Select 
+                      <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
+                        PRIORITY
+                      </Label>
+                      <Select
                         value={task.priority}
-                        onValueChange={(value) => handleUpdate({ priority: value as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' })}
+                        onValueChange={(value) =>
+                          handleUpdate({
+                            priority: value as
+                              | "LOW"
+                              | "MEDIUM"
+                              | "HIGH"
+                              | "CRITICAL",
+                          })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -884,7 +1025,10 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                       </Label>
                       <div className="flex flex-wrap gap-2 mb-2">
                         {task.assignees.map((user) => (
-                          <div key={user.id} className="flex items-center gap-2 p-2 rounded border">
+                          <div
+                            key={user.id}
+                            className="flex items-center gap-2 p-2 rounded border"
+                          >
                             <Avatar className="h-6 w-6">
                               <AvatarImage src={user.avatarUrl} />
                               <AvatarFallback className="text-xs">
@@ -895,7 +1039,9 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                           </div>
                         ))}
                         {task.assignees.length === 0 && (
-                          <p className="text-sm text-muted-foreground">Unassigned</p>
+                          <p className="text-sm text-muted-foreground">
+                            Unassigned
+                          </p>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground italic">
@@ -911,15 +1057,22 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                       </Label>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal"
+                          >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {task.dueDate ? format(new Date(task.dueDate), 'PPP') : 'Set due date'}
+                            {task.dueDate
+                              ? format(new Date(task.dueDate), "PPP")
+                              : "Set due date"}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
-                            selected={task.dueDate ? new Date(task.dueDate) : undefined}
+                            selected={
+                              task.dueDate ? new Date(task.dueDate) : undefined
+                            }
                             onSelect={(date) => handleUpdate({ dueDate: date })}
                             initialFocus
                           />
@@ -938,12 +1091,17 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                           {totalTimeLogged}h
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {timeLogs.length} time {timeLogs.length === 1 ? 'entry' : 'entries'}
+                          {timeLogs.length} time{" "}
+                          {timeLogs.length === 1 ? "entry" : "entries"}
                         </p>
                       </div>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" size="sm" className="mt-2 w-full">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 w-full"
+                          >
                             <Clock className="h-4 w-4 mr-1" />
                             Log Time
                           </Button>
@@ -958,7 +1116,9 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                                 min="0"
                                 placeholder="e.g., 2.5"
                                 value={timeLogHours}
-                                onChange={(e) => setTimeLogHours(e.target.value)}
+                                onChange={(e) =>
+                                  setTimeLogHours(e.target.value)
+                                }
                               />
                             </div>
                             <div>
@@ -966,16 +1126,18 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                               <Textarea
                                 placeholder="What did you work on?"
                                 value={timeLogDescription}
-                                onChange={(e) => setTimeLogDescription(e.target.value)}
+                                onChange={(e) =>
+                                  setTimeLogDescription(e.target.value)
+                                }
                                 className="min-h-[60px]"
                               />
                             </div>
-                            <Button 
+                            <Button
                               onClick={handleLogTime}
                               disabled={isLoggingTime || !timeLogHours}
                               className="w-full"
                             >
-                              {isLoggingTime ? 'Logging...' : 'Log Time'}
+                              {isLoggingTime ? "Logging..." : "Log Time"}
                             </Button>
                           </div>
                         </PopoverContent>
@@ -987,8 +1149,8 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
                     {/* Metadata */}
                     <div className="text-xs text-muted-foreground space-y-1">
                       <p>Task ID: {task.id.substring(0, 8)}</p>
-                      <p>Created: {format(new Date(task.createdAt), 'PPP')}</p>
-                      <p>Updated: {format(new Date(task.updatedAt), 'PPP')}</p>
+                      <p>Created: {format(new Date(task.createdAt), "PPP")}</p>
+                      <p>Updated: {format(new Date(task.updatedAt), "PPP")}</p>
                     </div>
                   </div>
                 </ScrollArea>
@@ -1002,10 +1164,12 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
               <Button variant="outline" onClick={() => setIsEditing(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => {
-                handleUpdate(task)
-                setIsEditing(false)
-              }}>
+              <Button
+                onClick={() => {
+                  handleUpdate(task);
+                  setIsEditing(false);
+                }}
+              >
                 Save Changes
               </Button>
             </div>
@@ -1013,108 +1177,114 @@ export const ComprehensiveTaskDetailModal: React.FC<ComprehensiveTaskDetailModal
         </div>
       </DialogContent>
     </Dialog>
-  )
-}
+  );
+};
 
 // Custom Field Renderer Component
 interface CustomFieldRendererProps {
-  customField: CustomField
-  isEditing: boolean
-  onUpdate: (value: any) => void
+  customField: CustomField;
+  isEditing: boolean;
+  onUpdate: (value: any) => void;
 }
 
 const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
   customField,
   isEditing,
-  onUpdate
+  onUpdate,
 }) => {
-  const { customField: field, value } = customField
+  const { customField: field, value } = customField;
 
   const renderField = () => {
     switch (field.type) {
-      case 'TEXT':
+      case "TEXT":
         return isEditing ? (
-          <Input 
-            value={value || ''}
+          <Input
+            value={value || ""}
             onChange={(e) => onUpdate(e.target.value)}
             placeholder={field.placeholder}
           />
         ) : (
-          <p className="text-sm">{value || '-'}</p>
-        )
+          <p className="text-sm">{value || "-"}</p>
+        );
 
-      case 'TEXTAREA':
+      case "TEXTAREA":
         return isEditing ? (
-          <Textarea 
-            value={value || ''}
+          <Textarea
+            value={value || ""}
             onChange={(e) => onUpdate(e.target.value)}
             placeholder={field.placeholder}
             className="min-h-[80px]"
           />
         ) : (
-          <p className="text-sm whitespace-pre-wrap">{value || '-'}</p>
-        )
+          <p className="text-sm whitespace-pre-wrap">{value || "-"}</p>
+        );
 
-      case 'NUMBER':
+      case "NUMBER":
         return isEditing ? (
-          <Input 
+          <Input
             type="number"
-            value={value || ''}
+            value={value || ""}
             onChange={(e) => onUpdate(e.target.value)}
             min={field.min}
             max={field.max}
             placeholder={field.placeholder}
           />
         ) : (
-          <p className="text-sm">{value || '-'}</p>
-        )
+          <p className="text-sm">{value || "-"}</p>
+        );
 
-      case 'DROPDOWN':
-        const options = field.options ? JSON.parse(field.options) : []
+      case "DROPDOWN":
+        const options = field.options ? JSON.parse(field.options) : [];
         return isEditing ? (
-          <Select value={value || ''} onValueChange={onUpdate}>
+          <Select value={value || ""} onValueChange={onUpdate}>
             <SelectTrigger>
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
             <SelectContent>
               {options.map((opt: string) => (
-                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                <SelectItem key={opt} value={opt}>
+                  {opt}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
         ) : (
-          <p className="text-sm">{value || '-'}</p>
-        )
+          <p className="text-sm">{value || "-"}</p>
+        );
 
-      case 'MULTI_SELECT':
-        const multiOptions = field.options ? JSON.parse(field.options) : []
-        const selectedValues = value ? JSON.parse(value) : []
+      case "MULTI_SELECT":
+        const multiOptions = field.options ? JSON.parse(field.options) : [];
+        const selectedValues = value ? JSON.parse(value) : [];
         return (
           <div className="flex flex-wrap gap-1">
             {selectedValues.map((val: string) => (
-              <Badge key={val} variant="secondary">{val}</Badge>
+              <Badge key={val} variant="secondary">
+                {val}
+              </Badge>
             ))}
-            {selectedValues.length === 0 && <span className="text-sm text-muted-foreground">-</span>}
+            {selectedValues.length === 0 && (
+              <span className="text-sm text-muted-foreground">-</span>
+            )}
           </div>
-        )
+        );
 
-      case 'BOOLEAN':
+      case "BOOLEAN":
         return isEditing ? (
-          <Checkbox 
-            checked={value === 'true'}
+          <Checkbox
+            checked={value === "true"}
             onCheckedChange={(checked) => onUpdate(checked.toString())}
           />
         ) : (
-          <p className="text-sm">{value === 'true' ? 'Yes' : 'No'}</p>
-        )
+          <p className="text-sm">{value === "true" ? "Yes" : "No"}</p>
+        );
 
-      case 'DATE':
+      case "DATE":
         return isEditing ? (
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-full justify-start">
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {value ? format(new Date(value), 'PPP') : 'Pick a date'}
+                {value ? format(new Date(value), "PPP") : "Pick a date"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
@@ -1126,39 +1296,49 @@ const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
             </PopoverContent>
           </Popover>
         ) : (
-          <p className="text-sm">{value ? format(new Date(value), 'PPP') : '-'}</p>
-        )
+          <p className="text-sm">
+            {value ? format(new Date(value), "PPP") : "-"}
+          </p>
+        );
 
-      case 'EMAIL':
+      case "EMAIL":
         return isEditing ? (
-          <Input 
+          <Input
             type="email"
-            value={value || ''}
+            value={value || ""}
             onChange={(e) => onUpdate(e.target.value)}
             placeholder={field.placeholder}
           />
         ) : (
-          <a href={`mailto:${value}`} className="text-sm text-blue-600 hover:underline">
-            {value || '-'}
+          <a
+            href={`mailto:${value}`}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            {value || "-"}
           </a>
-        )
+        );
 
-      case 'URL':
+      case "URL":
         return isEditing ? (
-          <Input 
+          <Input
             type="url"
-            value={value || ''}
+            value={value || ""}
             onChange={(e) => onUpdate(e.target.value)}
             placeholder={field.placeholder}
           />
         ) : (
-          <a href={value || '#'} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
-            {value || '-'}
+          <a
+            href={value || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 hover:underline"
+          >
+            {value || "-"}
           </a>
-        )
+        );
 
-      case 'RATING':
-        const rating = parseInt(value || '0')
+      case "RATING":
+        const rating = parseInt(value || "0");
         return (
           <div className="flex gap-1">
             {[1, 2, 3, 4, 5].map((star) => (
@@ -1166,41 +1346,47 @@ const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
                 key={star}
                 className={cn(
                   "h-5 w-5 cursor-pointer",
-                  star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+                  star <= rating
+                    ? "fill-yellow-400 text-yellow-400"
+                    : "text-gray-300"
                 )}
                 onClick={() => isEditing && onUpdate(star.toString())}
               />
             ))}
           </div>
-        )
+        );
 
-      case 'CHECKBOX':
-        const checkboxOptions = field.options ? JSON.parse(field.options) : []
-        const checkedValues = value ? JSON.parse(value) : []
+      case "CHECKBOX":
+        const checkboxOptions = field.options ? JSON.parse(field.options) : [];
+        const checkedValues = value ? JSON.parse(value) : [];
         return (
           <div className="space-y-2">
             {checkboxOptions.map((opt: string) => (
               <div key={opt} className="flex items-center gap-2">
-                <Checkbox 
+                <Checkbox
                   checked={checkedValues.includes(opt)}
                   disabled={!isEditing}
                   onCheckedChange={(checked) => {
                     const newValues = checked
                       ? [...checkedValues, opt]
-                      : checkedValues.filter((v: string) => v !== opt)
-                    onUpdate(JSON.stringify(newValues))
+                      : checkedValues.filter((v: string) => v !== opt);
+                    onUpdate(JSON.stringify(newValues));
                   }}
                 />
                 <Label className="text-sm">{opt}</Label>
               </div>
             ))}
           </div>
-        )
+        );
 
       default:
-        return <p className="text-sm text-muted-foreground">Unsupported field type</p>
+        return (
+          <p className="text-sm text-muted-foreground">
+            Unsupported field type
+          </p>
+        );
     }
-  }
+  };
 
   return (
     <div className="space-y-2">
@@ -1213,5 +1399,5 @@ const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
       )}
       {renderField()}
     </div>
-  )
-}
+  );
+};
