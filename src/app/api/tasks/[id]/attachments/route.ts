@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { AuthService } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+  extractPublicId,
+  getResourceTypeFromFilename,
+} from "@/lib/cloudinary";
 
 // GET all attachments for a task
 export async function GET(
@@ -41,15 +47,7 @@ export async function GET(
       orderBy: { uploadedAt: "desc" },
     });
 
-    // Process attachments to include base64 encoded file data
-    const processedAttachments = attachments.map((attachment) => ({
-      ...attachment,
-      fileData: attachment.fileData
-        ? Buffer.from(attachment.fileData).toString("base64")
-        : null,
-    }));
-
-    return NextResponse.json(processedAttachments);
+    return NextResponse.json(attachments);
   } catch (error) {
     console.error("Error fetching attachments:", error);
     return NextResponse.json(
@@ -87,41 +85,32 @@ export async function POST(
     // Handle multipart form data
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const fileName =
-      (formData.get("fileName") as string) || file?.name || "unnamed";
-    const fileSize =
-      parseInt((formData.get("fileSize") as string) || "0") || file?.size || 0;
-    const mimeType =
-      (formData.get("mimeType") as string) ||
-      file?.type ||
-      "application/octet-stream";
-    const fileType =
-      (formData.get("fileType") as string) ||
-      file?.type ||
-      "application/octet-stream";
-    const fileExtension =
-      (formData.get("fileExtension") as string) ||
-      file?.name.split(".").pop() ||
-      "bin";
+
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // For now, save file metadata only
-    // In production: upload to S3/cloud storage and get URL
-    // const uploadedUrl = await uploadToS3(buffer, fileName)
+    const fileName = file.name || "unnamed";
+    const fileSize = file.size;
+    const mimeType = file.type || "application/octet-stream";
 
+    // Upload file to Cloudinary
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    const resourceType = getResourceTypeFromFilename(fileName);
+
+    const cloudinaryResult = await uploadToCloudinary(buffer, {
+      folder: `task-attachments/${params.id}`,
+      public_id: `${Date.now()}-${fileName.replace(/\.[^/.]+$/, "")}`,
+      resource_type: resourceType,
+    });
 
     const attachment = await prisma.attachment.create({
       data: {
         taskId: params.id,
         fileName,
-        fileData: buffer,
+        filePath: cloudinaryResult.secure_url,
         fileSize,
-        fileType,
-        fileExtension,
         mimeType,
         uploadedBy: user.id,
       },
@@ -136,10 +125,11 @@ export async function POST(
       },
     });
 
-    console.log("✅ File uploaded successfully:", {
+    console.log("✅ File uploaded successfully to Cloudinary:", {
       fileName,
       fileSize,
       mimeType,
+      cloudinaryUrl: cloudinaryResult.secure_url,
     });
     return NextResponse.json(attachment, { status: 201 });
   } catch (error) {
@@ -188,6 +178,19 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Delete from Cloudinary first
+    const publicId = extractPublicId(attachment.filePath);
+    if (publicId) {
+      try {
+        await deleteFromCloudinary(publicId);
+        console.log("✅ File deleted from Cloudinary:", publicId);
+      } catch (error) {
+        console.error("Error deleting from Cloudinary:", error);
+        // Continue with database deletion even if Cloudinary deletion fails
+      }
+    }
+
+    // Delete from database
     await prisma.attachment.delete({
       where: { id: attachmentId },
     });
