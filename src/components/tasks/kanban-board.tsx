@@ -167,32 +167,23 @@ export function KanbanBoard({
     }
   }, [activeColumns, columnOrder.length])
 
-  console.log('🎯 KANBAN BOARD DEBUG:', {
-    totalTasks: tasks.length,
-    columns: activeColumns.map(col => ({ id: col.id, title: col.title })),
-    sampleTasks: tasks.slice(0, 3).map(t => ({ 
-      id: t.id.slice(0, 8), 
-      title: t.title,
-      status: t.status, 
-      customStatus: t.customStatus 
-    }))
-  })
+  // Debug logging (remove in production)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🎯 KANBAN:', { totalTasks: tasks.length, columns: activeColumns.length })
+  }
 
   // IMPROVED GROUPING LOGIC - Works with both default and custom statuses
   const tasksByStatus = tasks.reduce((acc, task) => {
     const keys: string[] = []
 
-    // RULE 1: If task has customStatus, use it as a key
+    // RULE 1: If task has customStatus, ONLY use customStatus (no duplicates)
     if (task.customStatus) {
       keys.push(task.customStatus)
-    }
-    
-    // RULE 2: Always add numeric status as a key (for default columns)
-    keys.push(String(task.status))
-
-    // RULE 3: For default workflows, also map numeric to text keys
-    // This ensures tasks show up in default "To Do", "In Progress", "Done" columns
-    if (!task.customStatus) {
+    } else {
+      // RULE 2: For tasks without customStatus, use numeric status and text variations
+      keys.push(String(task.status))
+      
+      // RULE 3: Map numeric to text keys for default columns
       switch (Number(task.status)) {
         case 1:
           keys.push('To Do')
@@ -224,11 +215,7 @@ export function KanbanBoard({
     return acc
   }, {} as Record<string, Task[]>)
 
-  console.log('📊 TASKS GROUPED:', Object.entries(tasksByStatus).map(([key, tasks]) => ({
-    groupKey: key,
-    taskCount: tasks.length,
-    taskTitles: tasks.map(t => t.title).slice(0, 2)
-  })))
+  // Removed verbose logging for production
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -287,18 +274,7 @@ export function KanbanBoard({
     e.stopPropagation()
 
     if (draggedTask) {
-      // SIMPLIFIED DROP LOGIC
-      // Always pass the column title - parent will handle the mapping
-      const statusValue = columnTitle
-      
-      console.log('🎯 TASK DROPPED:', { 
-        taskId: draggedTask.slice(0, 8), 
-        columnId, 
-        columnTitle,
-        statusValue 
-      })
-      
-      onTaskMove?.(draggedTask, statusValue)
+      onTaskMove?.(draggedTask, columnTitle)
       setDraggedTask(null)
     }
   }
@@ -325,33 +301,8 @@ export function KanbanBoard({
   return (
     <div className="flex space-x-6 overflow-x-auto pb-6">
       {columnOrder.map((column) => {
-        // IMPROVED MATCHING LOGIC - Works with both default and custom workflows
-        let columnTasks: Task[] = []
-        
-        // Strategy 1: Match by exact column title (for custom statuses)
-        columnTasks = tasksByStatus[column.title] || []
-        
-        // Strategy 2: Match by column ID (for default numeric statuses)
-        if (columnTasks.length === 0) {
-          columnTasks = tasksByStatus[String(column.id)] || []
-        }
-        
-        // Strategy 3: For default columns, also check common variations
-        if (columnTasks.length === 0) {
-          if (column.title === 'To Do' || column.title === 'Todo') {
-            columnTasks = tasksByStatus['1'] || tasksByStatus['To Do'] || tasksByStatus['Todo'] || tasksByStatus['Backlog'] || []
-          } else if (column.title === 'In Progress') {
-            columnTasks = tasksByStatus['2'] || tasksByStatus['In Progress'] || tasksByStatus['In Development'] || []
-          } else if (column.title === 'Done') {
-            columnTasks = tasksByStatus['3'] || tasksByStatus['Done'] || tasksByStatus['Completed'] || []
-          }
-        }
-
-        console.log(`📋 Column "${column.title}" (ID: ${column.id}):`, {
-          tasksFound: columnTasks.length,
-          taskTitles: columnTasks.map(t => t.title).slice(0, 2)
-        })
-
+        // Simplified column matching - single strategy
+        const columnTasks: Task[] = tasksByStatus[column.title] || tasksByStatus[String(column.id)] || []
         const Icon = column.icon
 
         return (

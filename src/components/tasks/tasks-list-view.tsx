@@ -25,6 +25,7 @@ import {
   Tag,
   UserPlus,
   X,
+  CheckSquare,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
@@ -48,7 +49,7 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { CreateTaskDialog } from "./create-task-dialog";
-import { ComprehensiveTaskDetailModal } from "./comprehensive-task-detail-modal";
+import { TaskDetailModal } from "./task-detail-modal";
 import { getStatusColor, getStatusLabel, normalizeStatusForAPI, normalizeStatusFromAPI, getNumericStatus } from "@/lib/status-utils";
 import { useWorkspace } from "@/components/providers/workspace-provider"
 
@@ -318,19 +319,22 @@ export function TasksListView({
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      // If workspace is selected, fetch tasks from that workspace
-      // Otherwise, fetch tasks from current project or all user tasks
+      // Prioritize projectId if available, otherwise use workspaceId
       let url = '/api/tasks?'
-      if (selectedWorkspace) {
-        url += `workspaceId=${selectedWorkspace.id}`
-      } else if (projectId) {
+      if (projectId) {
         url += `projectId=${projectId}`
+      } else if (selectedWorkspace) {
+        url += `workspaceId=${selectedWorkspace.id}`
       }
 
       const response = await fetch(url);
       if (response.ok) {
         const updatedTasks = await response.json();
-        setTasks(updatedTasks);
+        // Filter by projectId if specified (safety measure)
+        const filteredTasks = projectId 
+          ? updatedTasks.filter((task: any) => task.projectId === projectId)
+          : updatedTasks;
+        setTasks(filteredTasks);
       }
     } catch (error) {
       console.error("Error refreshing tasks:", error);
@@ -345,19 +349,22 @@ export function TasksListView({
 
     setIsRefreshing(true);
     try {
-      // If workspace is selected, fetch tasks from that workspace
-      // Otherwise, fetch tasks from current project or all user tasks
+      // Prioritize projectId if available, otherwise use workspaceId
       let url = '/api/tasks?'
-      if (selectedWorkspace) {
-        url += `workspaceId=${selectedWorkspace.id}`
-      } else if (projectId) {
+      if (projectId) {
         url += `projectId=${projectId}`
+      } else if (selectedWorkspace) {
+        url += `workspaceId=${selectedWorkspace.id}`
       }
 
       const response = await fetch(url);
       if (response.ok) {
         const updatedTasks = await response.json();
-        setTasks(updatedTasks);
+        // Filter by projectId if specified (safety measure)
+        const filteredTasks = projectId 
+          ? updatedTasks.filter((task: any) => task.projectId === projectId)
+          : updatedTasks;
+        setTasks(filteredTasks);
       }
     } catch (error) {
       console.error("Error refreshing tasks:", error);
@@ -574,59 +581,44 @@ export function TasksListView({
 
   const handleStatusChange = async (taskId: string, status: string) => {
     const originalTask = tasks.find((t) => t.id === taskId);
-    if (!originalTask) {
-      console.error("❌ Task not found:", taskId);
-      return;
-    }
+    if (!originalTask) return;
 
-    console.log("🔄 Status change requested:", { taskId, status, originalStatus: originalTask.status });
-
-    // Map status to numeric (1/2/3) and customStatus name using CustomStatus table data
-    let resolvedNumericStatus = 1;
-    let customStatusName: string | undefined = undefined;
-
-    const statusStr = String(status);
-
-    // Check if it's a built-in status (1, 2, 3, or their names)
-    if (['1', '2', '3'].includes(statusStr)) {
-      resolvedNumericStatus = parseInt(statusStr, 10);
-    } else if (['todo', 'TODO', 'BACKLOG'].includes(statusStr)) {
-      resolvedNumericStatus = 1;
-    } else if (['in-progress', 'in_progress', 'IN_PROGRESS'].includes(statusStr)) {
-      resolvedNumericStatus = 2;
-    } else if (['done', 'DONE', 'COMPLETED'].includes(statusStr)) {
-      resolvedNumericStatus = 3;
-    } else {
-      // Not a built-in status - look up in availableStatuses (from CustomStatus table)
-      const customStatus = availableStatuses.find((s) => String(s.id) === statusStr);
-      
-      if (customStatus) {
-        // Map category to numeric status
-        switch (customStatus.category) {
-          case 'BACKLOG':
-            resolvedNumericStatus = 1;
-            break;
-          case 'IN_PROGRESS':
-            resolvedNumericStatus = 2;
-            break;
-          case 'COMPLETED':
-            resolvedNumericStatus = 3;
-            break;
-          case 'ON_HOLD':
-            resolvedNumericStatus = 1; // Treat ON_HOLD as BACKLOG
-            break;
-          default:
-            resolvedNumericStatus = 1;
-        }
-        customStatusName = String(customStatus.name);
-      } else {
-        // Fallback: treat as custom status name
-        resolvedNumericStatus = 1;
-        customStatusName = statusStr;
+    // Simplified status mapping
+    const mapStatus = (statusStr: string) => {
+      // Check if it's a built-in numeric status
+      if (['1', '2', '3'].includes(statusStr)) {
+        return { status: parseInt(statusStr, 10), customStatus: undefined };
       }
-    }
+      
+      // Check if it's a built-in status name
+      const normalized = statusStr.toLowerCase();
+      if (['todo', 'backlog'].includes(normalized)) {
+        return { status: 1, customStatus: undefined };
+      }
+      if (normalized.includes('progress')) {
+        return { status: 2, customStatus: undefined };
+      }
+      if (['done', 'completed'].includes(normalized)) {
+        return { status: 3, customStatus: undefined };
+      }
 
-    console.log("📤 Sending to API:", { status: resolvedNumericStatus, customStatus: customStatusName });
+      // Look up in available custom statuses
+      const customStatus = availableStatuses.find((s) => String(s.id) === statusStr);
+      if (customStatus) {
+        const categoryMap: Record<string, number> = {
+          'BACKLOG': 1, 'IN_PROGRESS': 2, 'COMPLETED': 3, 'ON_HOLD': 1
+        };
+        return {
+          status: categoryMap[customStatus.category || 'BACKLOG'] || 1,
+          customStatus: String(customStatus.name)
+        };
+      }
+
+      // Fallback: treat as custom status name
+      return { status: 1, customStatus: statusStr };
+    };
+
+    const { status: resolvedNumericStatus, customStatus: customStatusName } = mapStatus(String(status));
 
     // Optimistically update the UI
     setTasks((prevTasks) =>
@@ -651,12 +643,10 @@ export function TasksListView({
 
       if (!response.ok) {
         const error = await response.json();
-        console.error("❌ API Error Response:", error);
         throw new Error(error.error || `HTTP ${response.status}`);
       }
 
       const result = await response.json();
-      console.log(`✅ Status update successful for task ${taskId}: ${originalTask.status} -> ${result.status}`);
 
       // Update local state with the response from server
       setTasks((prevTasks) => {
@@ -687,7 +677,7 @@ export function TasksListView({
       setIsRefreshing(true);
       setTimeout(() => setIsRefreshing(false), 100);
     } catch (error) {
-      console.error("💥 Error updating task status:", error);
+      console.error("Error updating task status:", error);
 
       // Revert optimistic update on error
       setTasks((prevTasks) =>
@@ -697,9 +687,6 @@ export function TasksListView({
             : task
         )
       );
-
-      // Optionally show user-friendly error notification
-      // toast?.error?.("Failed to update task status. Please try again.")
     }
   };
 
@@ -1106,55 +1093,56 @@ export function TasksListView({
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px]">
-            <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-              <tr>
-                <th className="w-10 px-4 py-4 text-left"></th>
-                <th className="w-10 px-4 py-4 text-left"></th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                  Task Name
-                </th>
-                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                  Priority
-                </th>
-                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                  Assigned To
-                </th>
-                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                  Tags
-                </th>
-                <th className="w-12 px-4 py-4 text-left"></th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+        {/* Professional Table */}
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+                  <th className="w-12 px-6 py-3 text-left">
+                    <Checkbox
+                      checked={selectedTasks.length === filteredAndSortedTasks.length && filteredAndSortedTasks.length > 0}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedTasks(filteredAndSortedTasks.map(t => t.id));
+                        } else {
+                          setSelectedTasks([]);
+                        }
+                      }}
+                      className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                    />
+                  </th>
+                  <th className="px-6 py-3 text-left">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Task</span>
+                  </th>
+                  <th className="px-6 py-3 text-left">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</span>
+                  </th>
+                  <th className="px-6 py-3 text-left">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Priority</span>
+                  </th>
+                  <th className="px-6 py-3 text-left">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Assignee</span>
+                  </th>
+                  <th className="px-6 py-3 text-left">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Due Date</span>
+                  </th>
+                  <th className="w-16 px-6 py-3"></th>
+                </tr>
+              </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {filteredAndSortedTasks.map((task) => (
                 <tr
                   key={task.id}
-                  className={`group hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${
+                  className={`group hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-all duration-150 cursor-pointer ${
                     selectedTasks.includes(task.id)
-                      ? "bg-blue-50 dark:bg-blue-900/20"
-                      : ""
+                      ? "bg-blue-50/50 dark:bg-blue-900/10 border-l-2 border-l-blue-500"
+                      : "border-l-2 border-l-transparent"
                   }`}
-                  onMouseEnter={() => setHoveredRow(task.id)}
-                  onMouseLeave={() => setHoveredRow(null)}
+                  onClick={() => handleTaskClick(task)}
                 >
-                  {/* Drag Handle */}
-                  <td className="px-4 py-5">
-                    <div className="flex items-center justify-center">
-                      <GripVertical className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-move" />
-                    </div>
-                  </td>
-
                   {/* Checkbox */}
-                  <td className="px-4 py-5">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedTasks.includes(task.id)}
                       onCheckedChange={(checked) =>
@@ -1164,64 +1152,59 @@ export function TasksListView({
                     />
                   </td>
 
-                  {/* Task Name */}
-                  <td className="px-6 py-5">
-                    <div className="flex items-start gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
-                            {task.title}
-                          </h3>
-                        </div>
-                        {task.description && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-                            {task.description}
-                          </p>
+                  {/* Task Name & Details */}
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        {task.type && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] font-medium px-1.5 py-0.5 ${getTaskTypeColor(task.type)}`}
+                          >
+                            {formatTaskType(task.type)}
+                          </Badge>
                         )}
-                        <div className="flex items-center gap-3 mt-2">
-                          {(task.commentsCount || 0) > 0 && (
-                            <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                              <MessageSquare className="h-3 w-3" />
-                              <span>{task.commentsCount}</span>
-                            </div>
-                          )}
-                          {(task.attachmentsCount || 0) > 0 && (
-                            <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                              <Paperclip className="h-3 w-3" />
-                              <span>{task.attachmentsCount}</span>
-                            </div>
-                          )}
-                          {(task.timeSpent || 0) > 0 && (
-                            <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                              <Clock className="h-3 w-3" />
-                              <span>{task.timeSpent}h</span>
-                            </div>
-                          )}
-                        </div>
+                        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                          {task.title}
+                        </h3>
+                      </div>
+                      {task.description && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+                          {task.description}
+                        </p>
+                      )}
+                      {/* Meta Info */}
+                      <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                        {(task.commentsCount || 0) > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            <span>{task.commentsCount}</span>
+                          </div>
+                        )}
+                        {(task.attachmentsCount || 0) > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <Paperclip className="h-3.5 w-3.5" />
+                            <span>{task.attachmentsCount}</span>
+                          </div>
+                        )}
+                        {(task.timeSpent || 0) > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            <span>{task.timeSpent}h logged</span>
+                          </div>
+                        )}
+                        {task.tags && task.tags.length > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <Tag className="h-3.5 w-3.5" />
+                            <span>{task.tags.length} {task.tags.length === 1 ? 'tag' : 'tags'}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>
 
-                  {/* Type */}
-                  <td className="px-4 py-5">
-                    {task.type ? (
-                      <Badge
-                        variant="outline"
-                        className={`text-xs font-medium ${getTaskTypeColor(
-                          task.type
-                        )}`}
-                      >
-                        {formatTaskType(task.type)}
-                      </Badge>
-                    ) : (
-                      <span className="text-sm text-gray-400 dark:text-gray-500">
-                        Task
-                      </span>
-                    )}
-                  </td>
-
                   {/* Status */}
-                  <td className="px-4 py-5">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <Select
                       value={
                         task.customStatus 
@@ -1232,15 +1215,20 @@ export function TasksListView({
                         handleStatusChange(task.id, value);
                       }}
                     >
-                      <SelectTrigger className="w-auto h-8 p-1 border-0 bg-transparent">
-                        <Badge
-                          variant="outline"
-                          className={`text-xs font-medium cursor-pointer capitalize ${getStatusColor(
-                            task.status
-                          )}`}
-                        >
-                          {task.customStatus || getStatusLabel(task.status)}
-                        </Badge>
+                      <SelectTrigger className="w-full h-9 border-0 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ 
+                              backgroundColor: availableStatuses.find(s => 
+                                s.name === task.customStatus || s.id?.toString() === task.status?.toString()
+                              )?.color || '#6B7280'
+                            }}
+                          />
+                          <span className="text-sm font-medium capitalize">
+                            {task.customStatus || getStatusLabel(task.status)}
+                          </span>
+                        </div>
                       </SelectTrigger>
                       <SelectContent>
                         {/* Show all statuses from availableStatuses without duplicates */}
@@ -1288,35 +1276,52 @@ export function TasksListView({
                   </td>
 
                   {/* Priority */}
-                  <td className="px-4 py-5">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <Select
                       value={task.priority}
                       onValueChange={(value) =>
                         handlePriorityChange(task.id, value)
                       }
                     >
-                      <SelectTrigger className="w-auto h-8 p-1 border-0 bg-transparent">
-                        <Badge
-                          variant="outline"
-                          className={`text-xs font-medium cursor-pointer ${getPriorityColor(
-                            task.priority
-                          )}`}
-                        >
-                          {task.priority.charAt(0).toUpperCase() +
-                            task.priority.slice(1)}
-                        </Badge>
+                      <SelectTrigger className="w-full h-9 border-0 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors">
+                        <div className="flex items-center gap-2">
+                          <Flag className={`h-3.5 w-3.5 ${getPriorityColor(task.priority)}`} />
+                          <span className="text-sm font-medium capitalize">
+                            {task.priority}
+                          </span>
+                        </div>
                       </SelectTrigger>
                       <SelectContent className="z-50">
-                        <SelectItem value="critical">Critical</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="critical">
+                          <div className="flex items-center gap-2">
+                            <Flag className="h-3.5 w-3.5 text-red-500" />
+                            <span>Critical</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="high">
+                          <div className="flex items-center gap-2">
+                            <Flag className="h-3.5 w-3.5 text-orange-500" />
+                            <span>High</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="medium">
+                          <div className="flex items-center gap-2">
+                            <Flag className="h-3.5 w-3.5 text-blue-500" />
+                            <span>Medium</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="low">
+                          <div className="flex items-center gap-2">
+                            <Flag className="h-3.5 w-3.5 text-gray-400" />
+                            <span>Low</span>
+                          </div>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </td>
 
-                  {/* Assigned To */}
-                  <td className="px-4 py-5">
+                  {/* Assignee */}
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <Popover 
                       open={openPopovers[`assignee-${task.id}`] || false}
                       onOpenChange={(open) => handlePopoverOpen(`assignee-${task.id}`, open)}
@@ -1325,7 +1330,7 @@ export function TasksListView({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 gap-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          className="h-9 gap-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors w-full justify-start px-2"
                         >
                           {task.assignees && task.assignees.length > 0 ? (
                             <div className="flex items-center gap-2">
@@ -1413,110 +1418,44 @@ export function TasksListView({
                     </Popover>
                   </td>
 
-                  {/* Tags */}
-                  <td className="px-4 py-5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {task.tags && task.tags.length > 0 && (
-                        <>
-                          {task.tags.slice(0, 2).map((tag) => (
-                            <Badge
-                              key={tag.id}
-                              variant="outline"
-                              className="text-xs gap-1"
-                              style={{ 
-                                borderColor: tag.color || '#6B7280',
-                                color: tag.color || '#6B7280'
-                              }}
-                            >
-                              <Tag className="h-3 w-3" />
-                              {tag.name}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRemoveTag(task.id, tag.id);
-                                }}
-                                className="ml-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full p-0.5"
-                              >
-                                <X className="h-2.5 w-2.5" />
-                              </button>
-                            </Badge>
-                          ))}
-                          {task.tags.length > 2 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{task.tags.length - 2}
-                            </Badge>
-                          )}
-                        </>
-                      )}
-                      <Popover 
-                        open={openPopovers[`tags-${task.id}`] || false}
-                        onOpenChange={(open) => handlePopoverOpen(`tags-${task.id}`, open)}
-                      >
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
-                          >
-                            <Plus className="h-3 w-3 text-gray-400" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-72 p-0 shadow-lg" align="start">
-                          <Command className="rounded-lg border-0">
-                            <CommandInput 
-                              placeholder="Search tags..." 
-                              className="h-11 border-b"
-                            />
-                            <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
-                              No tags found.
-                            </CommandEmpty>
-                            <CommandGroup className="max-h-72 overflow-auto p-2">
-                              {workspaceTags.map((tag) => {
-                                const isAdded = task.tags?.some(t => t.id === tag.id);
-                                return (
-                                  <CommandItem
-                                    key={tag.id}
-                                    onSelect={() => {
-                                      if (!isAdded) {
-                                        handleAddTag(task.id, tag.id);
-                                      }
-                                      handlePopoverOpen(`tags-${task.id}`, false);
-                                    }}
-                                    className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md cursor-pointer hover:bg-accent aria-selected:bg-accent"
-                                    disabled={isAdded}
-                                  >
-                                    <div className="flex items-center gap-3 flex-1">
-                                      <div 
-                                        className="h-3 w-3 rounded-full flex-shrink-0"
-                                        style={{ backgroundColor: tag.color || '#6B7280' }}
-                                      />
-                                      <span className="text-sm font-medium text-foreground">
-                                        {tag.name}
-                                      </span>
-                                    </div>
-                                    {isAdded && (
-                                      <Badge variant="secondary" className="text-xs flex-shrink-0">
-                                        ✓ Added
-                                      </Badge>
-                                    )}
-                                  </CommandItem>
-                                );
-                              })}
-                            </CommandGroup>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+                  {/* Due Date */}
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                    {task.dueDate ? (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Clock className="h-3.5 w-3.5 text-gray-400" />
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-400 dark:text-gray-500">No date</span>
+                    )}
                   </td>
 
                   {/* Actions */}
-                  <td className="px-4 py-5">
-                    <div className="flex items-center justify-center">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 opacity-100"
-                        onClick={() => handleTaskClick(task)}
+                        className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTaskClick(task);
+                        }}
+                        title="View details"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Add more actions
+                        }}
+                        title="More actions"
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
@@ -1526,6 +1465,36 @@ export function TasksListView({
               ))}
             </tbody>
           </table>
+          </div>
+          
+          {/* Empty State */}
+          {filteredAndSortedTasks.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 px-4">
+              <div className="rounded-full bg-gray-100 dark:bg-gray-800 p-6 mb-4">
+                <CheckSquare className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                No tasks found
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-sm mb-6">
+                {searchTerm || statusFilter !== "all" || priorityFilter !== "all"
+                  ? "Try adjusting your filters or search query"
+                  : "Get started by creating your first task"}
+              </p>
+              {!searchTerm && statusFilter === "all" && priorityFilter === "all" && (
+                <CreateTaskDialog 
+                  onTaskCreated={onTaskCreated}
+                  projectId={projectId}
+                  workflowStatuses={workflowStatuses}
+                >
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Task
+                  </Button>
+                </CreateTaskDialog>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -1564,7 +1533,7 @@ export function TasksListView({
       </div>
 
       {selectedTask && (
-        <ComprehensiveTaskDetailModal
+        <TaskDetailModal
           taskId={selectedTask.id}
           isOpen={isTaskDetailOpen}
           onClose={() => {
@@ -1574,6 +1543,7 @@ export function TasksListView({
           onUpdate={() => {
             refreshTasks();
           }}
+          workflowStatuses={workflowStatuses}
         />
       )}
     </>

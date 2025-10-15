@@ -51,6 +51,8 @@ import {
   Download,
   Upload,
   FileJson,
+  Tag,
+  Flag,
 } from "lucide-react";
 import { ViewImageModal } from "./view-image-modal";
 import { format } from "date-fns";
@@ -119,6 +121,7 @@ interface Attachment {
   uploadedAt: Date;
   uploadedBy: string;
   user: User;
+  description?: string; // Optional description/caption for the attachment
 }
 
 interface TimeLog {
@@ -134,7 +137,7 @@ interface TaskDetail {
   id: string;
   title: string;
   description?: string;
-  status: "TODO" | "IN_PROGRESS" | "DONE";
+  status: number | string;  // Numeric (1/2/3) or custom status
   customStatus?: string;
   statusCategory?: string;
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -152,6 +155,12 @@ interface TaskDetail {
     title: string;
     description?: string;
   };
+  tags?: Array<{
+    id: string;
+    name: string;
+    color?: string;
+  }>;
+  label?: string; // Comma-separated labels from API
   customFields?: CustomField[];
   subtasks?: Subtask[];
   comments?: Comment[];
@@ -159,16 +168,17 @@ interface TaskDetail {
   timeLogs?: TimeLog[];
 }
 
-interface ComprehensiveTaskDetailModalProps {
+interface TaskDetailModalProps {
   taskId: string;
   isOpen: boolean;
   onClose: () => void;
   onUpdate?: () => void;
+  workflowStatuses?: Array<{ id: string | number; title: string; color?: string; category?: string }>;
 }
 
-export const ComprehensiveTaskDetailModal: React.FC<
-  ComprehensiveTaskDetailModalProps
-> = ({ taskId, isOpen, onClose, onUpdate }) => {
+export const TaskDetailModal: React.FC<
+  TaskDetailModalProps
+> = ({ taskId, isOpen, onClose, onUpdate, workflowStatuses }) => {
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -213,7 +223,6 @@ export const ComprehensiveTaskDetailModal: React.FC<
 
   const handleUpdate = async (updates: Partial<TaskDetail>) => {
     try {
-      console.log("Updating task with:", updates);
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -221,10 +230,13 @@ export const ComprehensiveTaskDetailModal: React.FC<
       });
       if (response.ok) {
         const updatedTask = await response.json();
-        console.log("Task updated successfully:", updatedTask);
-        // Normalize API response - handle both 'creator' and 'createdBy'
+        // Normalize API response
         if (updatedTask.creator && !updatedTask.createdBy) {
           updatedTask.createdBy = updatedTask.creator;
+        }
+        // Ensure dates are valid
+        if (!updatedTask.updatedAt) {
+          updatedTask.updatedAt = new Date().toISOString();
         }
         // Update local state immediately
         setTask(updatedTask);
@@ -527,7 +539,9 @@ export const ComprehensiveTaskDetailModal: React.FC<
                     {task.createdBy?.name || task.creator?.name || "Unknown"}
                   </span>
                   <span>•</span>
-                  <span>{format(new Date(task.createdAt), "MMM d, yyyy")}</span>
+                  <span>
+                    {task.createdAt ? format(new Date(task.createdAt), "MMM d, yyyy") : "N/A"}
+                  </span>
                   {task.dueDate && (
                     <>
                       <span>•</span>
@@ -564,10 +578,10 @@ export const ComprehensiveTaskDetailModal: React.FC<
           </DialogHeader>
 
           {/* Main Content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1  ">
             <div className="grid grid-cols-10 h-full">
-              {/* Left Column - Main Content */}
-              <div className="col-span-7 border-r">
+              {/* Left Column - Properties & Details */}
+              <div className="col-span-4 border-r">
                 <ScrollArea className="h-[calc(90vh-180px)]">
                   <div className="p-6 space-y-6">
                     {/* Description */}
@@ -620,8 +634,8 @@ export const ComprehensiveTaskDetailModal: React.FC<
                       </>
                     )}
 
-                    {/* Subtasks */}
-                    <div>
+                    {/* Subtasks - Commented out as requested */}
+                    {/* <div>
                       <div className="flex items-center justify-between mb-4">
                         <Label className="text-sm font-semibold flex items-center gap-2">
                           <CheckSquare className="h-4 w-4" />
@@ -683,10 +697,275 @@ export const ComprehensiveTaskDetailModal: React.FC<
                           <Plus className="h-4 w-4" />
                         </Button>
                       </div>
+                    </div> */}
+
+                    <Separator />
+
+                    {/* Tags */}
+                    <div>
+                      <Label className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                        <Tag className="h-3 w-3" />
+                        TAGS
+                      </Label>
+                      <div className="flex flex-wrap gap-2">
+                        {(task.label ? task.label.split(',').map(tag => tag.trim()) : []).map((tag, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                        {(!task.label || task.label.trim() === '') && (
+                          <p className="text-sm text-muted-foreground">No tags</p>
+                        )}
+                      </div>
                     </div>
 
                     <Separator />
 
+                    {/* Status */}
+                    <div>
+                      <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
+                        STATUS
+                      </Label>
+                      <Select
+                        value={task.customStatus || String(task.status)}
+                        onValueChange={(value) => {
+                          // Map status to API format
+                          const mapStatusToAPI = () => {
+                            const matchedStatus = workflowStatuses?.find(
+                              (s) => s.title === value || String(s.id) === value
+                            );
+
+                            if (matchedStatus) {
+                              const isCustom = matchedStatus.category || 
+                                              (typeof matchedStatus.id === 'string' && matchedStatus.id.length > 10);
+                              
+                              let numericStatus = 1;
+                              if (['In Progress', 'In Development'].includes(matchedStatus.title)) {
+                                numericStatus = 2;
+                              } else if (['Done', 'Completed'].includes(matchedStatus.title)) {
+                                numericStatus = 3;
+                              } else if (matchedStatus.category) {
+                                const categoryMap: Record<string, number> = {
+                                  'BACKLOG': 1, 'IN_PROGRESS': 2, 'COMPLETED': 3, 'ON_HOLD': 1
+                                };
+                                numericStatus = categoryMap[matchedStatus.category] || 1;
+                              }
+
+                              return {
+                                status: numericStatus,
+                                customStatus: isCustom ? matchedStatus.title : undefined
+                              };
+                            }
+
+                            // Fallback to numeric
+                            if (/^\d+$/.test(value)) {
+                              return { status: parseInt(value, 10), customStatus: undefined };
+                            }
+                            return { status: 1, customStatus: value };
+                          };
+
+                          const { status, customStatus } = mapStatusToAPI();
+                          handleUpdate({ status, customStatus });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {workflowStatuses && workflowStatuses.length > 0 ? (
+                            workflowStatuses.map((status) => (
+                              <SelectItem key={status.id} value={status.title}>
+                                {status.title}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            // Fallback to default statuses
+                            <>
+                              <SelectItem value="Todo">To Do</SelectItem>
+                              <SelectItem value="In Progress">In Progress</SelectItem>
+                              <SelectItem value="Done">Done</SelectItem>
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Priority */}
+                    <div>
+                      <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
+                        PRIORITY
+                      </Label>
+                      <Select
+                        value={task.priority}
+                        onValueChange={(value) =>
+                          handleUpdate({
+                            priority: value as
+                              | "LOW"
+                              | "MEDIUM"
+                              | "HIGH"
+                              | "CRITICAL",
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="LOW">Low</SelectItem>
+                          <SelectItem value="MEDIUM">Medium</SelectItem>
+                          <SelectItem value="HIGH">High</SelectItem>
+                          <SelectItem value="CRITICAL">Critical</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Assignees */}
+                    <div>
+                      <Label className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                        <Users className="h-3 w-3" />
+                        ASSIGNEES
+                      </Label>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {task.assignees.map((user) => (
+                          <div
+                            key={user.id}
+                            className="flex items-center gap-2 p-2 rounded border"
+                          >
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={user.avatarUrl} />
+                              <AvatarFallback className="text-xs">
+                                {user.name.substring(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm">{user.name}</span>
+                          </div>
+                        ))}
+                        {task.assignees.length === 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            Unassigned
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground italic">
+                        Note: Assignee management will be added in next update
+                      </p>
+                    </div>
+
+                    {/* Due Date */}
+                    <div>
+                      <Label className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                        <CalendarIcon className="h-3 w-3" />
+                        DUE DATE
+                      </Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {task.dueDate && task.dueDate !== null
+                              ? format(new Date(task.dueDate), "PPP")
+                              : "Set due date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={
+                              task.dueDate ? new Date(task.dueDate) : undefined
+                            }
+                            onSelect={(date) => handleUpdate({ dueDate: date })}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    {/* Time Tracking */}
+                    <div>
+                      <Label className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        TIME LOGGED
+                      </Label>
+                      <div className="p-3 rounded border">
+                        <p className="text-2xl font-semibold">
+                          {totalTimeLogged}h
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {timeLogs.length} time{" "}
+                          {timeLogs.length === 1 ? "entry" : "entries"}
+                        </p>
+                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 w-full"
+                          >
+                            <Clock className="h-4 w-4 mr-1" />
+                            Log Time
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80">
+                          <div className="space-y-4">
+                            <div>
+                              <Label>Hours Spent</Label>
+                              <Input
+                                type="number"
+                                step="0.25"
+                                min="0"
+                                placeholder="e.g., 2.5"
+                                value={timeLogHours}
+                                onChange={(e) =>
+                                  setTimeLogHours(e.target.value)
+                                }
+                              />
+                            </div>
+                            <div>
+                              <Label>Description (optional)</Label>
+                              <Textarea
+                                placeholder="What did you work on?"
+                                value={timeLogDescription}
+                                onChange={(e) =>
+                                  setTimeLogDescription(e.target.value)
+                                }
+                                className="min-h-[60px]"
+                              />
+                            </div>
+                            <Button
+                              onClick={handleLogTime}
+                              disabled={isLoggingTime || !timeLogHours}
+                              className="w-full"
+                            >
+                              {isLoggingTime ? "Logging..." : "Log Time"}
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <Separator />
+
+                    {/* Metadata */}
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>Task ID: {task.id.substring(0, 8)}</p>
+                      <p>
+                        Created: {task.createdAt ? format(new Date(task.createdAt), "PPP") : "N/A"}
+                      </p>
+                      <p>
+                        Updated: {task.updatedAt ? format(new Date(task.updatedAt), "PPP") : "N/A"}
+                      </p>
+                    </div>
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* Right Column - Attachments & Comments */}
+              <div className="col-span-6">
+                <ScrollArea className="h-[calc(90vh-180px)]">
+                  <div className="p-6 space-y-6">
                     {/* Attachments */}
                     <div>
                       <div className="flex items-center justify-between mb-4">
@@ -767,7 +1046,12 @@ export const ComprehensiveTaskDetailModal: React.FC<
                                 >
                                   {attachment.fileName}
                                 </p>
-                                <p className="text-xs text-muted-foreground">
+                                {attachment.description && (
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                    {attachment.description}
+                                  </p>
+                                )}
+                                <p className="text-xs text-muted-foreground mt-1">
                                   {(attachment.fileSize / 1024).toFixed(1)} KB •{" "}
                                   {attachment.user.name}
                                 </p>
@@ -815,10 +1099,12 @@ export const ComprehensiveTaskDetailModal: React.FC<
                                   {comment.user.name}
                                 </span>
                                 <span className="text-xs text-muted-foreground">
-                                  {format(
-                                    new Date(comment.createdAt),
-                                    "MMM d, yyyy h:mm a"
-                                  )}
+                                  {comment.createdAt
+                                    ? format(
+                                        new Date(comment.createdAt),
+                                        "MMM d, yyyy h:mm a"
+                                      )
+                                    : "N/A"}
                                 </span>
                               </div>
                               <p className="text-sm text-muted-foreground">
@@ -946,204 +1232,6 @@ export const ComprehensiveTaskDetailModal: React.FC<
                           </Button>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                </ScrollArea>
-              </div>
-
-              {/* Right Column - Properties */}
-              <div className="col-span-3">
-                <ScrollArea className="h-[calc(90vh-180px)]">
-                  <div className="p-6 space-y-6">
-                    {/* Status */}
-                    <div>
-                      <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
-                        STATUS
-                      </Label>
-                      <Select
-                        value={task.customStatus || task.status}
-                        onValueChange={(value) =>
-                          handleUpdate({
-                            status: value as "TODO" | "IN_PROGRESS" | "DONE",
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="TODO">To Do</SelectItem>
-                          <SelectItem value="IN_PROGRESS">
-                            In Progress
-                          </SelectItem>
-                          <SelectItem value="DONE">Done</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Priority */}
-                    <div>
-                      <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
-                        PRIORITY
-                      </Label>
-                      <Select
-                        value={task.priority}
-                        onValueChange={(value) =>
-                          handleUpdate({
-                            priority: value as
-                              | "LOW"
-                              | "MEDIUM"
-                              | "HIGH"
-                              | "CRITICAL",
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="LOW">Low</SelectItem>
-                          <SelectItem value="MEDIUM">Medium</SelectItem>
-                          <SelectItem value="HIGH">High</SelectItem>
-                          <SelectItem value="CRITICAL">Critical</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Assignees */}
-                    <div>
-                      <Label className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        ASSIGNEES
-                      </Label>
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {task.assignees.map((user) => (
-                          <div
-                            key={user.id}
-                            className="flex items-center gap-2 p-2 rounded border"
-                          >
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage src={user.avatarUrl} />
-                              <AvatarFallback className="text-xs">
-                                {user.name.substring(0, 2).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm">{user.name}</span>
-                          </div>
-                        ))}
-                        {task.assignees.length === 0 && (
-                          <p className="text-sm text-muted-foreground">
-                            Unassigned
-                          </p>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground italic">
-                        Note: Assignee management will be added in next update
-                      </p>
-                    </div>
-
-                    {/* Due Date */}
-                    <div>
-                      <Label className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                        <CalendarIcon className="h-3 w-3" />
-                        DUE DATE
-                      </Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="w-full justify-start text-left font-normal"
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {task.dueDate
-                              ? format(new Date(task.dueDate), "PPP")
-                              : "Set due date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={
-                              task.dueDate ? new Date(task.dueDate) : undefined
-                            }
-                            onSelect={(date) => handleUpdate({ dueDate: date })}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    {/* Time Tracking */}
-                    <div>
-                      <Label className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        TIME LOGGED
-                      </Label>
-                      <div className="p-3 rounded border">
-                        <p className="text-2xl font-semibold">
-                          {totalTimeLogged}h
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {timeLogs.length} time{" "}
-                          {timeLogs.length === 1 ? "entry" : "entries"}
-                        </p>
-                      </div>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-2 w-full"
-                          >
-                            <Clock className="h-4 w-4 mr-1" />
-                            Log Time
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-80">
-                          <div className="space-y-4">
-                            <div>
-                              <Label>Hours Spent</Label>
-                              <Input
-                                type="number"
-                                step="0.25"
-                                min="0"
-                                placeholder="e.g., 2.5"
-                                value={timeLogHours}
-                                onChange={(e) =>
-                                  setTimeLogHours(e.target.value)
-                                }
-                              />
-                            </div>
-                            <div>
-                              <Label>Description (optional)</Label>
-                              <Textarea
-                                placeholder="What did you work on?"
-                                value={timeLogDescription}
-                                onChange={(e) =>
-                                  setTimeLogDescription(e.target.value)
-                                }
-                                className="min-h-[60px]"
-                              />
-                            </div>
-                            <Button
-                              onClick={handleLogTime}
-                              disabled={isLoggingTime || !timeLogHours}
-                              className="w-full"
-                            >
-                              {isLoggingTime ? "Logging..." : "Log Time"}
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    <Separator />
-
-                    {/* Metadata */}
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      <p>Task ID: {task.id.substring(0, 8)}</p>
-                      <p>Created: {format(new Date(task.createdAt), "PPP")}</p>
-                      <p>Updated: {format(new Date(task.updatedAt), "PPP")}</p>
                     </div>
                   </div>
                 </ScrollArea>
@@ -1277,7 +1365,7 @@ const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-full justify-start">
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {value ? format(new Date(value), "PPP") : "Pick a date"}
+                {value && value !== null ? format(new Date(value), "PPP") : "Pick a date"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
@@ -1290,7 +1378,7 @@ const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
           </Popover>
         ) : (
           <p className="text-sm">
-            {value ? format(new Date(value), "PPP") : "-"}
+            {value && value !== null ? format(new Date(value), "PPP") : "-"}
           </p>
         );
 
@@ -1303,12 +1391,7 @@ const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
             placeholder={field.placeholder}
           />
         ) : (
-          <a
-            href={`mailto:${value}`}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            {value || "-"}
-          </a>
+          <p className="text-sm">{value || "-"}</p>
         );
 
       case "URL":
@@ -1319,26 +1402,38 @@ const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
             onChange={(e) => onUpdate(e.target.value)}
             placeholder={field.placeholder}
           />
-        ) : (
+        ) : value ? (
           <a
-            href={value || "#"}
+            href={value}
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-blue-600 hover:underline"
           >
-            {value || "-"}
+            {value}
           </a>
+        ) : (
+          <p className="text-sm">-</p>
+        );
+
+      case "CHECKBOX":
+        return isEditing ? (
+          <Checkbox
+            checked={value === "true"}
+            onCheckedChange={(checked) => onUpdate(checked.toString())}
+          />
+        ) : (
+          <p className="text-sm">{value === "true" ? "Checked" : "Unchecked"}</p>
         );
 
       case "RATING":
-        const rating = parseInt(value || "0");
+        const rating = parseInt(value || "0", 10);
         return (
           <div className="flex gap-1">
             {[1, 2, 3, 4, 5].map((star) => (
               <Star
                 key={star}
                 className={cn(
-                  "h-5 w-5 cursor-pointer",
+                  "h-4 w-4 cursor-pointer",
                   star <= rating
                     ? "fill-yellow-400 text-yellow-400"
                     : "text-gray-300"
@@ -1349,48 +1444,18 @@ const CustomFieldRenderer: React.FC<CustomFieldRendererProps> = ({
           </div>
         );
 
-      case "CHECKBOX":
-        const checkboxOptions = field.options ? JSON.parse(field.options) : [];
-        const checkedValues = value ? JSON.parse(value) : [];
-        return (
-          <div className="space-y-2">
-            {checkboxOptions.map((opt: string) => (
-              <div key={opt} className="flex items-center gap-2">
-                <Checkbox
-                  checked={checkedValues.includes(opt)}
-                  disabled={!isEditing}
-                  onCheckedChange={(checked) => {
-                    const newValues = checked
-                      ? [...checkedValues, opt]
-                      : checkedValues.filter((v: string) => v !== opt);
-                    onUpdate(JSON.stringify(newValues));
-                  }}
-                />
-                <Label className="text-sm">{opt}</Label>
-              </div>
-            ))}
-          </div>
-        );
-
       default:
-        return (
-          <p className="text-sm text-muted-foreground">
-            Unsupported field type
-          </p>
-        );
+        return <p className="text-sm text-muted-foreground">Unsupported field type</p>;
     }
   };
 
   return (
-    <div className="space-y-2">
-      <Label className="text-sm font-medium">
-        {field.name}
-        {field.isRequired && <span className="text-red-500 ml-1">*</span>}
-      </Label>
-      {field.description && (
-        <p className="text-xs text-muted-foreground">{field.description}</p>
-      )}
+    <div>
+      <Label className="text-sm font-medium mb-2 block">{field.name}</Label>
       {renderField()}
+      {field.description && (
+        <p className="text-xs text-muted-foreground mt-1">{field.description}</p>
+      )}
     </div>
   );
 };

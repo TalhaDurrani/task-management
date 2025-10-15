@@ -85,6 +85,14 @@ const getIconName = (iconComponent: any) => {
 
 export default function TasksPage({ params }: TasksPageProps) {
   const { selectedWorkspace } = useWorkspace()
+  const router = useRouter()
+  
+  // Validate params
+  if (!params?.id) {
+    router.push('/dashboard/projects')
+    return null
+  }
+
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [project, setProject] = useState<any>(null)
   const [tasks, setTasks] = useState<any[]>([])
@@ -95,7 +103,7 @@ export default function TasksPage({ params }: TasksPageProps) {
   const [savedWorkflows, setSavedWorkflows] = useState<any[]>([])
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null)
   const [workflowManagerOpen, setWorkflowManagerOpen] = useState(false)
-  const router = useRouter()
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Transform API task data to UI format
   const transformTaskData = (apiTasks: any[]) => {
@@ -181,8 +189,11 @@ export default function TasksPage({ params }: TasksPageProps) {
           if (tasksResponse.ok) {
             const tasksData = await tasksResponse.json()
             
+            // Filter tasks to ensure they belong to this project (safety measure)
+            const projectTasks = tasksData.filter((task: any) => task.projectId === params.id)
+            
             // Transform the data for UI components
-            const transformedTasks = transformTaskData(tasksData)
+            const transformedTasks = transformTaskData(projectTasks)
             setTasks(transformedTasks)
           }
 
@@ -234,129 +245,112 @@ export default function TasksPage({ params }: TasksPageProps) {
       if (tasksResponse.ok) {
         const tasksData = await tasksResponse.json()
 
+        // Filter tasks to ensure they belong to this project (safety measure)
+        const projectTasks = tasksData.filter((task: any) => task.projectId === params.id)
+
         // Transform the data for UI components
-        const transformedTasks = transformTaskData(tasksData)
+        const transformedTasks = transformTaskData(projectTasks)
         setTasks(transformedTasks)
+        
+        // Force re-render by updating refresh key
+        setRefreshKey(prev => prev + 1)
       }
     } catch (error) {
       console.error('Failed to refresh tasks:', error)
     }
   }
 
+  // Simplified status mapping helper
+  const mapStatusToAPI = (statusValue: string, workflowColumns: any[]) => {
+    // Find matching column by ID or title
+    const matchedColumn = workflowColumns.find((col: any) => 
+      String(col.id) === String(statusValue) || col.title === statusValue
+    )
+
+    if (matchedColumn) {
+      // Determine numeric status from title or category
+      let numericStatus = 1
+      
+      // Check if it's a built-in status by title
+      if (['In Progress', 'In Development'].includes(matchedColumn.title)) {
+        numericStatus = 2
+      } else if (['Done', 'Completed'].includes(matchedColumn.title)) {
+        numericStatus = 3
+      } else if (['Todo', 'Backlog'].includes(matchedColumn.title)) {
+        numericStatus = 1
+      } else if (matchedColumn.category) {
+        // Use category for custom statuses
+        const categoryMap: Record<string, number> = {
+          'BACKLOG': 1,
+          'IN_PROGRESS': 2,
+          'COMPLETED': 3,
+          'ON_HOLD': 1
+        }
+        numericStatus = categoryMap[matchedColumn.category] || 1
+      }
+
+      // A status is "custom" if it has a category (comes from CustomStatus table)
+      // OR if the column has a UUID (not numeric 1/2/3)
+      const isCustomStatus = matchedColumn.category || 
+                            (typeof matchedColumn.id === 'string' && matchedColumn.id.length > 10)
+
+      return {
+        status: numericStatus,
+        customStatus: isCustomStatus ? matchedColumn.title : undefined
+      }
+    }
+
+    // Fallback: parse as numeric or default status name
+    if (/^\d+$/.test(String(statusValue))) {
+      return { status: parseInt(String(statusValue), 10), customStatus: undefined }
+    }
+
+    const normalized = String(statusValue).toLowerCase()
+    if (normalized === 'todo' || normalized === 'backlog') {
+      return { status: 1, customStatus: undefined }
+    } else if (normalized.includes('progress')) {
+      return { status: 2, customStatus: undefined }
+    } else if (normalized === 'done' || normalized === 'completed') {
+      return { status: 3, customStatus: undefined }
+    }
+
+    // Unknown status - treat as custom
+    return { status: 1, customStatus: String(statusValue) }
+  }
+
   const handleTaskStatusUpdate = async (taskId: string, newStatus: string | number) => {
     try {
-      console.log('🔄 handleTaskStatusUpdate called:', { taskId: taskId.slice(0, 8), newStatus })
-      
-      // Handle both column IDs (numeric or UUID) and string statuses
-      let apiStatus: number = 1 // Default to BACKLOG
-      let customStatusToSend: string | undefined = undefined
-
-      // Get columns from either customWorkflowColumns or the selected workflow
+      // Get workflow columns
       const selectedWorkflow = savedWorkflows.find(w => w.id === currentWorkflowId)
       const workflowColumns = customWorkflowColumns.length > 0 
         ? customWorkflowColumns 
         : (selectedWorkflow?.columns || [])
 
-      console.log('📋 Available columns:', workflowColumns.map((c: any) => ({ id: c.id, title: c.title })))
-
-      // First, check if newStatus matches a column ID or title in workflow columns
-      const matchedColumn = workflowColumns.find((col: any) => 
-        String(col.id) === String(newStatus) || col.title === newStatus
-      )
-
-      console.log('🎯 Matched column:', matchedColumn ? { id: matchedColumn.id, title: matchedColumn.title, category: matchedColumn.category } : 'NONE')
-
-      if (matchedColumn) {
-        // Found a matching column
-        customStatusToSend = matchedColumn.title
-        
-        // Map to numeric status based on column title or stored category
-        if (matchedColumn.title === 'Todo' || matchedColumn.title === 'Backlog') {
-          apiStatus = 1
-        } else if (matchedColumn.title === 'In Progress' || matchedColumn.title === 'In Development') {
-          apiStatus = 2
-        } else if (matchedColumn.title === 'Done' || matchedColumn.title === 'Completed') {
-          apiStatus = 3
-        } else {
-          // For custom columns, use stored category or look it up
-          const category = (matchedColumn as any).category || 
-            customStatuses.find(s => s.name === matchedColumn.title || s.id === matchedColumn.id)?.category
-          
-          if (category) {
-            // Map category to numeric status
-            switch (category) {
-              case 'BACKLOG':
-                apiStatus = 1
-                break
-              case 'IN_PROGRESS':
-                apiStatus = 2
-                break
-              case 'COMPLETED':
-                apiStatus = 3
-                break
-              case 'ON_HOLD':
-                apiStatus = 1 // Treat ON_HOLD as BACKLOG
-                break
-              default:
-                apiStatus = 1
-            }
-          } else {
-            // Default to 1 if we can't find the category
-            apiStatus = 1
-          }
-        }
-      } 
-      // Handle numeric status values (1, 2, 3)
-      else if (typeof newStatus === 'number' || (typeof newStatus === 'string' && /^\d+$/.test(newStatus))) {
-        apiStatus = typeof newStatus === 'number' ? newStatus : parseInt(newStatus, 10)
-        
-        // Get the column title for this numeric status
-        const col = customWorkflowColumns.find(c => c.id === apiStatus)
-        if (col && !['Todo', 'In Progress', 'Done'].includes(col.title)) {
-          customStatusToSend = col.title
-        }
-      }
-      // Handle string status names
-      else if (typeof newStatus === 'string') {
-        const normalized = newStatus.toLowerCase()
-        if (normalized === 'todo' || normalized === 'backlog') {
-          apiStatus = 1
-        } else if (normalized === 'in-progress' || normalized === 'in_progress' || normalized === 'in progress') {
-          apiStatus = 2
-        } else if (normalized === 'done' || normalized === 'completed') {
-          apiStatus = 3
-        } else {
-          // Treat as custom status name
-          customStatusToSend = newStatus
-          apiStatus = 1
-        }
-      }
+      // Map status using simplified helper
+      const { status, customStatus } = mapStatusToAPI(String(newStatus), workflowColumns)
 
       // Build payload
-      const payload: any = { status: apiStatus }
-      if (customStatusToSend) {
-        payload.customStatus = customStatusToSend
+      const payload: any = { status }
+      if (customStatus) {
+        payload.customStatus = customStatus
       }
-
-      console.log('Updating task status:', { taskId, newStatus, payload })
 
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
 
       if (response.ok) {
-        // Refresh tasks to get updated state from server
         await handleTaskCreated()
       } else {
         const error = await response.json()
         console.error('Failed to update task status:', error)
+        toast.error('Failed to update task status')
       }
     } catch (error) {
       console.error('Error updating task status:', error)
+      toast.error('An error occurred while updating the task')
     }
   }
 
@@ -773,6 +767,7 @@ export default function TasksPage({ params }: TasksPageProps) {
             </div> */}
 
             <KanbanBoard
+              key={`kanban-${refreshKey}`}
               tasks={tasks}
               workflows={savedWorkflows}
               selectedWorkflowId={currentWorkflowId || undefined}
@@ -806,6 +801,7 @@ export default function TasksPage({ params }: TasksPageProps) {
         
         <TabsContent value="list">
           <TasksListView
+            key={`list-${refreshKey}`}
             tasks={tasks}
             onTaskEdit={(task) => {
               // Refresh tasks after edit
@@ -822,7 +818,7 @@ export default function TasksPage({ params }: TasksPageProps) {
             onTaskCreated={handleTaskCreated}
             projectId={params.id}
             enableRealTimeUpdates={true}
-            refreshInterval={15000} // 15 seconds for project-specific view
+            refreshInterval={5000}
             workflowStatuses={
               customWorkflowColumns.length > 0
                 ? customWorkflowColumns
