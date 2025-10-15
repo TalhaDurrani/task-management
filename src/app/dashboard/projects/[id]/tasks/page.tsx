@@ -95,6 +95,7 @@ export default function TasksPage({ params }: TasksPageProps) {
   const [savedWorkflows, setSavedWorkflows] = useState<any[]>([])
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null)
   const [workflowManagerOpen, setWorkflowManagerOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
   const router = useRouter()
 
   // Transform API task data to UI format
@@ -237,6 +238,9 @@ export default function TasksPage({ params }: TasksPageProps) {
         // Transform the data for UI components
         const transformedTasks = transformTaskData(tasksData)
         setTasks(transformedTasks)
+        
+        // Force re-render by updating refresh key
+        setRefreshKey(prev => prev + 1)
       }
     } catch (error) {
       console.error('Failed to refresh tasks:', error)
@@ -773,6 +777,7 @@ export default function TasksPage({ params }: TasksPageProps) {
             </div> */}
 
             <KanbanBoard
+              key={`kanban-${refreshKey}`}
               tasks={tasks}
               workflows={savedWorkflows}
               selectedWorkflowId={currentWorkflowId || undefined}
@@ -806,6 +811,7 @@ export default function TasksPage({ params }: TasksPageProps) {
         
         <TabsContent value="list">
           <TasksListView
+            key={`list-${refreshKey}`}
             tasks={tasks}
             onTaskEdit={(task) => {
               // Refresh tasks after edit
@@ -822,7 +828,7 @@ export default function TasksPage({ params }: TasksPageProps) {
             onTaskCreated={handleTaskCreated}
             projectId={params.id}
             enableRealTimeUpdates={true}
-            refreshInterval={15000} // 15 seconds for project-specific view
+            refreshInterval={5000}
             workflowStatuses={
               customWorkflowColumns.length > 0
                 ? customWorkflowColumns

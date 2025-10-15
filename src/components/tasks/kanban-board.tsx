@@ -160,12 +160,12 @@ export function KanbanBoard({
 
   const activeColumns = workflowColumns
 
-  // Initialize column order
+  // Initialize column order and update when workflow changes
   useEffect(() => {
-    if (activeColumns && activeColumns.length > 0 && columnOrder.length === 0) {
+    if (activeColumns && activeColumns.length > 0) {
       setColumnOrder([...activeColumns])
     }
-  }, [activeColumns, columnOrder.length])
+  }, [activeColumns, selectedWorkflowId])
 
   console.log('🎯 KANBAN BOARD DEBUG:', {
     totalTasks: tasks.length,
